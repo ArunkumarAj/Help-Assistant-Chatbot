@@ -3,8 +3,9 @@ sentence-transformers==3.1.1
 pypdf2==3.0.1
 pytesseract==0.3.13
 pillow==10.4.0
-opensearch-py==2.7.1
+faiss-cpu==1.9.0
 torch==2.4.1
 numpy==2.1.2
 requests==2.32.3
-ollama==0.3.3
+langchain-core>=0.3.0
+python-dotenv>=1.0.0

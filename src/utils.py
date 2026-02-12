@@ -1,6 +1,7 @@
 # src/utils.py
 
 import logging
+import os
 import re
 from typing import List
 
@@ -11,6 +12,9 @@ def setup_logging() -> None:
     """
     Configures logging settings for the application, specifying log file, format, and level.
     """
+    log_dir = os.path.dirname(LOG_FILE_PATH)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
     logging.basicConfig(
         filename=LOG_FILE_PATH,
         filemode="a",

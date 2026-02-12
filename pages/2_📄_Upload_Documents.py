@@ -5,14 +5,14 @@ import time
 import streamlit as st
 from PyPDF2 import PdfReader
 
-from src.constants import OPENSEARCH_INDEX, TEXT_CHUNK_SIZE
+from src.constants import TEXT_CHUNK_SIZE
 from src.embeddings import generate_embeddings, get_embedding_model
+from src.faiss_store import list_document_names
 from src.ingestion import (
     bulk_index_documents,
     create_index,
     delete_documents_by_document_name,
 )
-from src.opensearch import get_opensearch_client
 from src.utils import chunk_text, setup_logging
 
 # Initialize logger
@@ -20,7 +20,7 @@ setup_logging()  # Set up centralized logging configuration
 logger = logging.getLogger(__name__)
 
 # Set page config with title, icon, and layout
-st.set_page_config(page_title="Jam with AI - Upload Documents", page_icon="📂")
+st.set_page_config(page_title="Upload Documents", page_icon="📂")
 
 # Custom CSS to style the page and sidebar
 st.markdown(
@@ -42,20 +42,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Add a logo (replace with your own image file path or URL)
-logo_path = "images/jamwithai_logo.png"  # Replace with your logo file
-if os.path.exists(logo_path):
-    st.sidebar.image(logo_path, width=220)
-else:
-    st.sidebar.markdown("### Logo Placeholder")
-    logger.warning("Logo not found, displaying placeholder.")
-
 # Sidebar header
 st.sidebar.markdown(
-    "<h2 style='text-align: center;'>Jam with AI</h2>", unsafe_allow_html=True
+    "<h2 style='text-align: center;'>Document Assistant</h2>",
+    unsafe_allow_html=True,
 )
 st.sidebar.markdown(
-    "<h4 style='text-align: center;'>Your Document Assistant</h4>",
+    "<h4 style='text-align: center;'>Upload & Manage PDFs</h4>",
     unsafe_allow_html=True,
 )
 
@@ -63,7 +56,7 @@ st.sidebar.markdown(
 st.sidebar.markdown(
     """
     <div class="footer-text">
-        © 2024 Jam with AI
+        © 2024
     </div>
     """,
     unsafe_allow_html=True,
@@ -73,7 +66,7 @@ st.sidebar.markdown(
 def render_upload_page() -> None:
     """
     Renders the document upload page for users to upload and manage PDFs.
-    Shows only the documents that are present in the OpenSearch index.
+    Shows only the documents that are present in the FAISS vector store.
     """
 
     st.title("Upload Documents")
@@ -92,26 +85,14 @@ def render_upload_page() -> None:
     UPLOAD_DIR = "uploaded_files"
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-    # Initialize OpenSearch client
-    with st.spinner("Connecting to OpenSearch..."):
-        client = get_opensearch_client()
-    index_name = OPENSEARCH_INDEX
-
-    # Ensure the index exists
-    create_index(client)
+    # Ensure FAISS vector store exists and get document list
+    with st.spinner("Loading vector store..."):
+        create_index()
+    document_names = list_document_names()
+    logger.info("Retrieved document names from FAISS store.")
 
     # Initialize or clear the documents list in session state
     st.session_state["documents"] = []
-
-    # Query OpenSearch to get the list of unique document names
-    query = {
-        "size": 0,
-        "aggs": {"unique_docs": {"terms": {"field": "document_name", "size": 10000}}},
-    }
-    response = client.search(index=index_name, body=query)
-    buckets = response["aggregations"]["unique_docs"]["buckets"]
-    document_names = [bucket["key"] for bucket in buckets]
-    logger.info("Retrieved document names from OpenSearch.")
 
     # Load document information from the index
     for document_name in document_names:

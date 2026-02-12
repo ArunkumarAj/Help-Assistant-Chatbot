@@ -1,15 +1,10 @@
 import logging
-import os
 
 import streamlit as st
 
-from src.chat import (  # type: ignore
-    ensure_model_pulled,
-    generate_response_streaming,
-    get_embedding_model,
-)
-from src.ingestion import create_index, get_opensearch_client
-from src.constants import OLLAMA_MODEL_NAME, OPENSEARCH_INDEX
+from src.chat import generate_response_streaming
+from src.embeddings import get_embedding_model
+from src.ingestion import create_index
 from src.utils import setup_logging
 
 # Initialize logger
@@ -17,7 +12,7 @@ setup_logging()  # Configures logging for the application
 logger = logging.getLogger(__name__)
 
 # Set page configuration
-st.set_page_config(page_title="Jam with AI - Chatbot", page_icon="🤖")
+st.set_page_config(page_title="Chatbot", page_icon="🤖")
 
 # Apply custom CSS
 st.markdown(
@@ -44,7 +39,7 @@ logger.info("Custom CSS applied.")
 # Main chatbot page rendering function
 def render_chatbot_page() -> None:
     # Set up a placeholder at the very top of the main content area
-    st.title("Jam with AI - Chatbot 🤖")
+    st.title("Chatbot 🤖")
     model_loading_placeholder = st.empty()
 
     # Initialize session state variables for chatbot settings
@@ -55,13 +50,9 @@ def render_chatbot_page() -> None:
     if "temperature" not in st.session_state:
         st.session_state["temperature"] = 0.7
 
-    # Initialize OpenSearch client
-    with st.spinner("Connecting to OpenSearch..."):
-        client = get_opensearch_client()
-    index_name = OPENSEARCH_INDEX
-
-    # Ensure the index exists
-    create_index(client)
+    # Ensure FAISS vector store exists
+    with st.spinner("Loading vector store..."):
+        create_index()
 
     # Sidebar settings for hybrid search toggle, result count, and temperature
     st.session_state["use_hybrid_search"] = st.sidebar.checkbox(
@@ -82,18 +73,9 @@ def render_chatbot_page() -> None:
         step=0.1,
     )
 
-    # Display logo or placeholder
-    logo_path = "images/jamwithai_logo.png"
-    if os.path.exists(logo_path):
-        st.sidebar.image(logo_path, width=220)
-        logger.info("Logo displayed.")
-    else:
-        st.sidebar.markdown("### Logo Placeholder")
-        logger.warning("Logo not found, displaying placeholder.")
-
     # Sidebar headers and footer
     st.sidebar.markdown(
-        "<h2 style='text-align: center;'>Jam with AI</h2>", unsafe_allow_html=True
+        "<h2 style='text-align: center;'>RAG Chatbot</h2>", unsafe_allow_html=True
     )
     st.sidebar.markdown(
         "<h4 style='text-align: center;'>Your Conversational Platform</h4>",
@@ -104,7 +86,7 @@ def render_chatbot_page() -> None:
     st.sidebar.markdown(
         """
         <div class="footer-text">
-            © 2024 Jam with AI
+            © 2024
         </div>
         """,
         unsafe_allow_html=True,
@@ -115,12 +97,11 @@ def render_chatbot_page() -> None:
     with model_loading_placeholder.container():
         st.spinner("Loading models for chat...")
 
-    # Load models if not already loaded
+    # Load embedding model if not already loaded (for RAG)
     if "embedding_models_loaded" not in st.session_state:
         with model_loading_placeholder:
-            with st.spinner("Loading Embedding and Ollama models for Hybrid Search..."):
+            with st.spinner("Loading embedding model for RAG..."):
                 get_embedding_model()
-                ensure_model_pulled(OLLAMA_MODEL_NAME)
                 st.session_state["embedding_models_loaded"] = True
         logger.info("Embedding model loaded.")
         model_loading_placeholder.empty()

@@ -1,27 +1,93 @@
-# 📝 Build Your Local RAG System with LLMs
+# 📝 Local RAG System with LLMs
 
-Welcome to the **Local LLM-based Retrieval-Augmented Generation (RAG) System**! This repository provides the full code to build a private, offline RAG system for managing and querying personal documents locally using a combination of OpenSearch, Sentence Transformers, and Large Language Models (LLMs). Perfect for anyone seeking a privacy-friendly solution to manage documents without relying on cloud services.
-
-![Demo Image](images/chatbot.png)
+A **Retrieval-Augmented Generation (RAG)** app for querying your documents locally: upload PDFs, search by meaning with FAISS, and chat using your own LLM via a REST API. No OpenSearch or Ollama required.
 
 ### 🌟 Key Features
-- **Privacy-Friendly Document Search:** Search through personal documents without uploading them to the cloud.
-- **Hybrid Search with OpenSearch:** Uses both traditional text matching and semantic search.
-- **Easy Integration with LLMs**: Leverage local LLMs for personalized, context-aware responses.
-
-### 🚀 Get Started
-1. Clone the repo: `git clone https://github.com/JAMwithAI/build_your_local_RAG_system.git`
-2. Install dependencies: `pip install -r requirements.txt`
-3. Configure `constants.py` for embedding models and OpenSearch settings.
-4. Run the Streamlit app: `streamlit run welcome.py`
-
-### 📘 Blog Guide
-For a detailed walkthrough of the setup and code, check out our blog:
-
-[**Build a Local LLM-based RAG System for Your Personal Documents - Part 1**](https://jamwithai.substack.com/p/build-a-local-llm-based-rag-system)
-
-[**Build a Local LLM-based RAG System for Your Personal Documents - Part 2: The Guide**](https://jamwithai.substack.com/p/build-a-local-llm-based-rag-system-628)
+- **Privacy-friendly:** Documents and vectors stay on your machine (FAISS + local embeddings).
+- **Vector search:** FAISS for fast similarity search over document chunks.
+- **Your own LLM:** Chat uses a custom LLM (LangChain) that calls your OpenAI-compatible REST API; configure `API_URL` and `API_KEY` in `.env`.
+- **Streamlit UI:** Welcome page, Chatbot (with RAG on/off and temperature), and Upload Documents.
 
 ---
 
-Enjoy your journey in building a private, AI-driven document management system! If you find this project useful, consider sharing it with others in the community!
+## Prerequisites
+
+- **Python:** 3.10 or 3.11 recommended (3.9+ may work).
+- **LLM API:** An OpenAI-compatible chat completions endpoint (URL + API key) for the chatbot.
+- **Optional – OCR:** For PDFs that are scanned images, [Tesseract](https://github.com/tesseract-ocr/tesseract) installed and on `PATH` (used by `pytesseract` in `src/ocr.py` for image-based PDF pages).
+
+---
+
+## Python setup and installation
+
+1. **Install Python**  
+   - Windows: [python.org](https://www.python.org/downloads/) — during setup, check “Add Python to PATH”.  
+   - macOS: `brew install python@3.11` or use python.org.  
+   - Linux: `sudo apt install python3.11 python3.11-venv` (or your distro’s package).
+
+2. **Clone the repo and go into the project folder**
+   ```bash
+   git clone <your-repo-url>
+   cd jam-chatbot
+   ```
+
+3. **Create and activate a virtual environment**
+   ```bash
+   python -m venv .venv
+   ```
+   - Windows (PowerShell): `.\.venv\Scripts\Activate.ps1`  
+   - Windows (cmd): `.\.venv\Scripts\activate.bat`  
+   - macOS/Linux: `source .venv/bin/activate`
+
+4. **Upgrade pip and install dependencies**
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+---
+
+## Configuration
+
+- **Embeddings and FAISS:** Edit `src/constants.py` as needed:
+  - `EMBEDDING_MODEL_PATH` – Sentence Transformers model (e.g. `microsoft/mpnet-base` or local path).
+  - `EMBEDDING_DIMENSION` – Must match the model (768 for mpnet-base).
+  - `TEXT_CHUNK_SIZE` – Chunk size (in words) for splitting documents.
+  - `FAISS_INDEX_PATH` – Where to store the FAISS index and metadata (default `data/faiss_index`).
+
+- **Chat LLM (your API):** Copy `.env.example` to `.env` in the project root and set:
+  - `API_URL` – Your LLM API chat completions URL (OpenAI-compatible).
+  - `API_KEY` – API key; sent as `X-API-KEY` by default (see `src/custom_llm.py` to change header).
+  - `LLM_MODEL` – (Optional) Model name (default used in code: `gpt-5-mini`).
+
+---
+
+## How to run
+
+1. Ensure the virtual environment is activated and dependencies are installed (see above).
+2. Ensure `.env` is configured (and `src/constants.py` if you changed defaults).
+3. From the project root, run:
+   ```bash
+   streamlit run Welcome.py
+   ```
+4. Open the URL shown in the terminal (e.g. `http://localhost:8501`).
+5. Use **Upload Documents** to add PDFs (they are chunked, embedded, and stored in FAISS). Use **Chatbot** to ask questions; enable “RAG mode” to use the uploaded documents as context.
+
+---
+
+## Main libraries and concepts
+
+| Purpose            | Library / concept                                      |
+|--------------------|--------------------------------------------------------|
+| Web UI             | Streamlit                                              |
+| Embeddings         | sentence-transformers                                  |
+| Vector store       | FAISS (faiss-cpu)                                      |
+| Chat LLM           | Custom REST client (LangChain `LLM`) in `src/custom_llm.py` |
+| Config             | `src/constants.py`, `.env` (python-dotenv)             |
+| PDF text           | PyPDF2; optional OCR via pytesseract + Pillow           |
+
+When you change code concepts or add/remove libraries, update this README so it stays in sync with the project.
+
+---
+
+Enjoy building your local RAG system.

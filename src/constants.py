@@ -3,17 +3,11 @@ ASSYMETRIC_EMBEDDING = False  # Flag for asymmetric embedding
 EMBEDDING_DIMENSION = 768  # Embedding model settings
 TEXT_CHUNK_SIZE = 300  # Maximum number of characters in each text chunk for
 
-OLLAMA_MODEL_NAME = (
-    "llama3.2:1b"  # Name of the model used in Ollama for chat functionality
-)
-
 ####################################################################################################
 # Dont change the following settings
 ####################################################################################################
 
 # Logging
 LOG_FILE_PATH = "logs/app.log"  # File path for the application log file
-# OpenSearch settings
-OPENSEARCH_HOST = "localhost"  # Hostname for the OpenSearch instance
-OPENSEARCH_PORT = 9200  # Port number for OpenSearch
-OPENSEARCH_INDEX = "documents"  # Index name for storing documents in OpenSearch
+# FAISS vector store
+FAISS_INDEX_PATH = "data/faiss_index"  # Path prefix for index and metadata files
