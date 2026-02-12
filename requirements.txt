@@ -1,10 +1,21 @@
+# API
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Streamlit UI
 streamlit==1.39.0
+
+# Embedding & vector store
 sentence-transformers==3.1.1
-pypdf2==3.0.1
-pytesseract==0.3.13
-pillow==10.4.0
 faiss-cpu==1.9.0
 torch==2.4.1
 numpy==2.1.2
+
+# Documents
+pypdf2==3.0.1
+pytesseract==0.3.13
+pillow==10.4.0
+
+# HTTP & config
 requests==2.32.3
 python-dotenv>=1.0.0

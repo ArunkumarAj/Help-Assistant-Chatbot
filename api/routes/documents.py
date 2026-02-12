@@ -1,0 +1,70 @@
+"""Document list, upload, delete. Upload: PDF bytes -> extract text -> chunk -> embed -> index."""
+import asyncio
+import io
+import logging
+from typing import List
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from PyPDF2 import PdfReader
+
+from core.config import settings
+from core.logging_config import setup_logging
+from services.ingestion import (
+    create_index,
+    bulk_index_documents,
+    delete_documents_by_document_name,
+    process_and_index_document,
+)
+from vector_store.store import list_document_names
+
+setup_logging()
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+def _extract_text_from_pdf(bytes_content: bytes) -> str:
+    reader = PdfReader(io.BytesIO(bytes_content))
+    return "".join(page.extract_text() or "" for page in reader.pages)
+
+
+@router.get("")
+async def list_documents() -> dict:
+    """List unique document names in the vector store."""
+    create_index()
+    names = list_document_names()
+    return {"documents": names}
+
+
+@router.post("/upload")
+async def upload_document(file: UploadFile = File(...)) -> dict:
+    """Upload a PDF: save to disk, extract text, chunk, embed, index. Async."""
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="PDF file required")
+    content = await file.read()
+    text = _extract_text_from_pdf(content)
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="No text extracted from PDF")
+    # Save file to uploads dir
+    settings.upload_dir.mkdir(parents=True, exist_ok=True)
+    save_path = settings.upload_dir / file.filename
+    with open(save_path, "wb") as f:
+        f.write(content)
+    create_index()
+    existing = list_document_names()
+    if file.filename in existing:
+        raise HTTPException(status_code=409, detail=f"Document '{file.filename}' already exists")
+    count, errors = await process_and_index_document(text, file.filename)
+    return {"filename": file.filename, "chunks_indexed": count, "errors": errors}
+
+
+@router.delete("/{document_name:path}")
+async def delete_document(document_name: str) -> dict:
+    """Delete all chunks for a document and remove file from uploads if present."""
+    create_index()
+    result = delete_documents_by_document_name(document_name)
+    file_path = settings.upload_dir / document_name
+    if file_path.exists():
+        file_path.unlink()
+        logger.info("Removed file %s", file_path)
+    return result

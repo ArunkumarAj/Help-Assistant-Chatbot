@@ -1,93 +1,98 @@
-# 📝 Local RAG System with LLMs
+# RAG Document Assistant (FastAPI + Streamlit)
 
-A **Retrieval-Augmented Generation (RAG)** app for querying your documents locally: upload PDFs, search by meaning with FAISS, and chat using your own LLM via a REST API. No OpenSearch or Ollama required.
+RAG app with a **FastAPI (async) backend** and a **Streamlit frontend**. Documents are uploaded and indexed via the API; the chatbot calls the API for RAG responses.
 
-### 🌟 Key Features
-- **Privacy-friendly:** Documents and vectors stay on your machine (FAISS + local embeddings).
-- **Vector search:** FAISS for fast similarity search over document chunks.
-- **Your own LLM:** Chat uses a custom LLM (LangChain) that calls your OpenAI-compatible REST API; configure `API_URL` and `API_KEY` in `.env`.
-- **Streamlit UI:** Welcome page, Chatbot (with RAG on/off and temperature), and Upload Documents.
+## Project layout
 
----
+```
+jam-chatbot/
+├── api/                 # FastAPI app & routes (async)
+│   ├── main.py           # App entry, CORS, lifespan
+│   └── routes/
+│       ├── health.py     # GET /health
+│       ├── documents.py  # GET /documents, POST /documents/upload, DELETE /documents/{name}
+│       └── chat.py       # POST /chat
+├── core/                 # Shared config, logging, text utils
+│   ├── config.py
+│   ├── logging_config.py
+│   └── text_utils.py
+├── embedding/            # SentenceTransformer model & embeddings
+│   └── model.py
+├── llm/                  # Custom LLM client (OpenAI-compatible REST)
+│   └── client.py
+├── vector_store/         # FAISS index & metadata
+│   └── store.py
+├── services/             # Business logic (ingestion, RAG)
+│   ├── ingestion.py
+│   └── rag.py
+├── streamlit_app/        # Streamlit UI (calls API)
+│   ├── Welcome.py        # Entry: streamlit run streamlit_app/Welcome.py
+│   ├── config.py         # API_BASE_URL
+│   ├── api_client.py     # HTTP client for API
+│   └── pages/
+│       ├── 1_🤖_Chatbot.py
+│       └── 2_📄_Upload_Documents.py
+├── logs/                 # Application logs (created at runtime)
+├── data/                 # FAISS index files (created at runtime)
+├── uploaded_files/       # Uploaded PDFs (created at runtime)
+├── .env.example
+├── requirements.txt
+└── README.md
+```
 
 ## Prerequisites
 
-- **Python:** 3.10 or 3.11 recommended (3.9+ may work).
-- **LLM API:** An OpenAI-compatible chat completions endpoint (URL + API key) for the chatbot.
-- **Optional – OCR:** For PDFs that are scanned images, [Tesseract](https://github.com/tesseract-ocr/tesseract) installed and on `PATH` (used by `pytesseract` in `src/ocr.py` for image-based PDF pages).
+- Python 3.10+
+- LLM API: OpenAI-compatible endpoint (API_URL + API_KEY in `.env`)
 
----
+## Setup
 
-## Python setup and installation
-
-1. **Install Python**  
-   - Windows: [python.org](https://www.python.org/downloads/) — during setup, check “Add Python to PATH”.  
-   - macOS: `brew install python@3.11` or use python.org.  
-   - Linux: `sudo apt install python3.11 python3.11-venv` (or your distro’s package).
-
-2. **Clone the repo and go into the project folder**
-   ```bash
-   git clone <your-repo-url>
-   cd jam-chatbot
-   ```
-
-3. **Create and activate a virtual environment**
+1. Clone and create a venv:
    ```bash
    python -m venv .venv
+   .venv\Scripts\activate   # Windows
+   # source .venv/bin/activate  # macOS/Linux
    ```
-   - Windows (PowerShell): `.\.venv\Scripts\Activate.ps1`  
-   - Windows (cmd): `.\.venv\Scripts\activate.bat`  
-   - macOS/Linux: `source .venv/bin/activate`
-
-4. **Upgrade pip and install dependencies**
+2. Install dependencies:
    ```bash
-   pip install --upgrade pip
    pip install -r requirements.txt
    ```
+3. Copy `.env.example` to `.env` and set:
+   - `API_URL` – your LLM chat completions URL
+   - `API_KEY` – API key (sent as `X-API-KEY`)
+   - `API_BASE_URL` – default `http://localhost:8000` (used by Streamlit to call the API)
 
----
+## Run
+
+**1. Start the FastAPI backend (from project root):**
+
+```bash
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**2. Start the Streamlit UI (from project root):**
+
+```bash
+streamlit run streamlit_app/Welcome.py
+```
+
+Open the URL shown (e.g. http://localhost:8501). Use **Upload Documents** to add PDFs and **Chatbot** to chat (enable RAG to use documents as context).
+
+## API summary
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /health | Health check |
+| GET | /documents | List document names |
+| POST | /documents/upload | Upload PDF (file) → extract text, chunk, embed, index |
+| DELETE | /documents/{name} | Delete document and its chunks |
+| POST | /chat | RAG chat (body: query, use_rag, num_results, temperature, chat_history) |
+
+Blocking work (embedding, FAISS, LLM) runs in thread pool via `run_in_executor` so the API stays async.
 
 ## Configuration
 
-- **Embeddings and FAISS:** Edit `src/constants.py` as needed:
-  - `EMBEDDING_MODEL_PATH` – Sentence Transformers model (e.g. `microsoft/mpnet-base` or local path).
-  - `EMBEDDING_DIMENSION` – Must match the model (768 for mpnet-base).
-  - `TEXT_CHUNK_SIZE` – Chunk size (in words) for splitting documents.
-  - `FAISS_INDEX_PATH` – Where to store the FAISS index and metadata (default `data/faiss_index`).
+- **core/config.py** (and env): `EMBEDDING_MODEL_PATH`, `EMBEDDING_DIMENSION`, `TEXT_CHUNK_SIZE`, `FAISS_INDEX_PATH`, `LOG_FILE_PATH`, etc.
+- **.env**: `API_URL`, `API_KEY`, `LLM_MODEL`, `API_BASE_URL` (for Streamlit).
 
-- **Chat LLM (your API):** Copy `.env.example` to `.env` in the project root and set:
-  - `API_URL` – Your LLM API chat completions URL (OpenAI-compatible).
-  - `API_KEY` – API key; sent as `X-API-KEY` by default (see `src/custom_llm.py` to change header).
-  - `LLM_MODEL` – (Optional) Model name (default used in code: `gpt-5-mini`).
-
----
-
-## How to run
-
-1. Ensure the virtual environment is activated and dependencies are installed (see above).
-2. Ensure `.env` is configured (and `src/constants.py` if you changed defaults).
-3. From the project root, run:
-   ```bash
-   streamlit run Welcome.py
-   ```
-4. Open the URL shown in the terminal (e.g. `http://localhost:8501`).
-5. Use **Upload Documents** to add PDFs (they are chunked, embedded, and stored in FAISS). Use **Chatbot** to ask questions; enable “RAG mode” to use the uploaded documents as context.
-
----
-
-## Main libraries and concepts
-
-| Purpose            | Library / concept                                      |
-|--------------------|--------------------------------------------------------|
-| Web UI             | Streamlit                                              |
-| Embeddings         | sentence-transformers                                  |
-| Vector store       | FAISS (faiss-cpu)                                      |
-| Chat LLM           | Custom REST client (LangChain `LLM`) in `src/custom_llm.py` |
-| Config             | `src/constants.py`, `.env` (python-dotenv)             |
-| PDF text           | PyPDF2; optional OCR via pytesseract + Pillow           |
-
-When you change code concepts or add/remove libraries, update this README so it stays in sync with the project.
-
----
-
-Enjoy building your local RAG system.
+When you change code or libraries, update this README to keep it in sync.

@@ -1,0 +1,100 @@
+"""Upload Documents page: calls GET /documents, POST /documents/upload, DELETE /documents/{name}."""
+import logging
+import os
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import streamlit as st
+from streamlit_app.api_client import list_documents, upload_document, delete_document
+from streamlit_app.config import API_BASE_URL
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+st.set_page_config(page_title="Upload Documents", page_icon="📂")
+st.markdown(
+    """
+    <style>
+    body { background-color: #f0f8ff; color: #002B5B; }
+    .sidebar .sidebar-content { background-color: #006d77; color: white; padding: 20px; border-right: 2px solid #003d5c; }
+    .sidebar h2, .sidebar h4 { color: white; }
+    .block-container { background-color: white; border-radius: 10px; padding: 20px; box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.1); }
+    .footer-text { font-size: 1.1rem; font-weight: bold; color: black; text-align: center; margin-top: 10px; }
+    .stButton button { background-color: #118ab2; color: white; border-radius: 5px; padding: 10px 20px; font-size: 16px; }
+    .stButton button:hover { background-color: #07a6c2; color: white; }
+    .stButton.delete-button button { background-color: #e63946; color: white; font-size: 14px; }
+    .stButton.delete-button button:hover { background-color: #ff4c4c; }
+    h1, h2, h3, h4 { color: #006d77; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+st.sidebar.markdown("<h2 style='text-align: center;'>Document Assistant</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h4 style='text-align: center;'>Upload & Manage PDFs</h4>", unsafe_allow_html=True)
+st.sidebar.markdown("<div class='footer-text'>© 2024</div>", unsafe_allow_html=True)
+
+
+def render_upload_page() -> None:
+    st.title("Upload Documents")
+
+    if "documents" not in st.session_state:
+        st.session_state["documents"] = []
+    if "deleted_file" in st.session_state:
+        st.success(f"Deleted '{st.session_state['deleted_file']}'.")
+        del st.session_state["deleted_file"]
+
+    try:
+        document_names = list_documents()
+    except Exception as e:
+        st.error(f"Cannot reach API at {API_BASE_URL}. Start it with: uvicorn api.main:app --reload --port 8000")
+        st.code("uvicorn api.main:app --reload --host 0.0.0.0 --port 8000")
+        return
+
+    # Build list for display (we don't have file content from API, only names)
+    st.session_state["documents"] = [{"filename": name, "file_path": None} for name in document_names]
+
+    uploaded_files = st.file_uploader("Upload PDF documents", type="pdf", accept_multiple_files=True)
+
+    if uploaded_files:
+        with st.spinner("Uploading and processing..."):
+            for uploaded_file in uploaded_files:
+                if uploaded_file.name in document_names:
+                    st.warning(f"'{uploaded_file.name}' already exists.")
+                    continue
+                try:
+                    data = upload_document(uploaded_file.getvalue(), uploaded_file.name)
+                    st.session_state["documents"].append({
+                        "filename": uploaded_file.name,
+                        "file_path": None,
+                    })
+                    document_names.append(uploaded_file.name)
+                except Exception as e:
+                    st.error(f"Upload failed for {uploaded_file.name}: {e}")
+        st.success("Upload complete.")
+
+    if st.session_state["documents"]:
+        st.markdown("### Uploaded Documents")
+        with st.expander("Manage Uploaded Documents", expanded=True):
+            for idx, doc in enumerate(st.session_state["documents"], 1):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.write(f"{idx}. {doc['filename']}")
+                with col2:
+                    if st.button("Delete", key=f"del_{doc['filename']}_{idx}", help=f"Delete {doc['filename']}"):
+                        try:
+                            delete_document(doc["filename"])
+                            st.session_state["documents"].pop(idx - 1)
+                            st.session_state["deleted_file"] = doc["filename"]
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(str(e))
+
+
+if __name__ == "__main__":
+    render_upload_page()
