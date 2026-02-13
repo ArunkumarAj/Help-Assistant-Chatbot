@@ -1,0 +1,22 @@
+[project]
+name = "jam-chatbot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "faiss-cpu>=1.13.2",
+    "fastapi>=0.115.0",
+    "langchain-core>=0.3.0",
+    "numpy==2.1.2",
+    "pillow==10.4.0",
+    "pypdf2==3.0.1",
+    "pytesseract==0.3.13",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.22",
+    "requests==2.32.3",
+    "sentence-transformers==3.1.1",
+    "streamlit==1.39.0",
+    "torch>=2.10.0",
+    "uvicorn[standard]>=0.32.0",
+]

@@ -1,0 +1,14 @@
+2026-02-12 23:32:06,673 - INFO - faiss.loader - Loading faiss with AVX2 support.
+2026-02-12 23:32:06,701 - INFO - faiss.loader - Successfully loaded faiss with AVX2 support.
+2026-02-12 23:32:06,766 - ERROR - fastapi - Form data requires "python-multipart" to be installed. 
+You can install "python-multipart" with: 
+
+pip install python-multipart
+
+2026-02-12 23:37:15,045 - INFO - faiss.loader - Loading faiss with AVX2 support.
+2026-02-12 23:37:15,070 - INFO - faiss.loader - Successfully loaded faiss with AVX2 support.
+2026-02-12 23:38:24,021 - INFO - embedding.model - Loading embedding model: microsoft/mpnet-base
+2026-02-12 23:38:24,023 - INFO - sentence_transformers.SentenceTransformer - Use pytorch device_name: cpu
+2026-02-12 23:38:24,023 - INFO - sentence_transformers.SentenceTransformer - Load pretrained SentenceTransformer: microsoft/mpnet-base
+2026-02-12 23:38:24,531 - WARNING - sentence_transformers.SentenceTransformer - No sentence-transformers model found with name microsoft/mpnet-base. Creating a new one with mean pooling.
+2026-02-12 23:38:26,560 - INFO - llm.client - LLM call: model=gpt-5-2 temp=0.7
