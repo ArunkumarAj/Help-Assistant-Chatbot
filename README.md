@@ -107,6 +107,10 @@ jam-chatbot/
 ├── logs/                   # App logs (created at runtime)
 ├── data/                   # FAISS index files (created at runtime)
 ├── uploaded_files/         # Uploaded PDFs (created at runtime)
+├── notebooks/              # API test notebooks (optional)
+│   ├── 01_documents_api.ipynb
+│   ├── 02_chat_api.ipynb
+│   └── README.md
 ├── .env.example
 ├── requirements.txt
 └── README.md
