@@ -25,11 +25,14 @@ def list_documents() -> List[str]:
     return r.json().get("documents", [])
 
 
+# Upload can be slow for large PDFs (extract, chunk, embed, index)
+UPLOAD_TIMEOUT_SECONDS = 600  # 10 minutes
+
 def upload_document(file_bytes: bytes, filename: str) -> dict:
     r = requests.post(
         _url("/documents/upload"),
         files={"file": (filename, file_bytes, "application/pdf")},
-        timeout=120,
+        timeout=(10, UPLOAD_TIMEOUT_SECONDS),  # (connect, read)
     )
     r.raise_for_status()
     return r.json()

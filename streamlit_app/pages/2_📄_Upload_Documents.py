@@ -58,10 +58,11 @@ def render_upload_page() -> None:
     # Build list for display (we don't have file content from API, only names)
     st.session_state["documents"] = [{"filename": name, "file_path": None} for name in document_names]
 
+    st.caption("Large PDFs may take several minutes to process (extract, chunk, embed, index). Please wait.")
     uploaded_files = st.file_uploader("Upload PDF documents", type="pdf", accept_multiple_files=True)
 
     if uploaded_files:
-        with st.spinner("Uploading and processing..."):
+        with st.spinner("Uploading and processing… This can take a few minutes for large files."):
             for uploaded_file in uploaded_files:
                 if uploaded_file.name in document_names:
                     st.warning(f"'{uploaded_file.name}' already exists.")
