@@ -28,6 +28,10 @@ FAISS_INDEX_PATH = os.environ.get("FAISS_INDEX_PATH", str(DATA_DIR / "faiss_inde
 # LLM (from env in llm module; listed here for reference)
 # API_URL, API_KEY, LLM_MODEL
 
+# Eval: logging hooks for latency (and optional token estimation) in RAG pipeline
+EVAL_LOGGING_ENABLED = os.environ.get("EVAL_LOGGING_ENABLED", "false").lower() in ("true", "1")
+EVAL_REPORTS_DIR = os.environ.get("EVAL_REPORTS_DIR", str(PROJECT_ROOT / "eval" / "reports"))
+
 
 class Settings:
     """Namespace for settings used across the app."""
@@ -42,6 +46,8 @@ class Settings:
     text_chunk_size = TEXT_CHUNK_SIZE
     text_chunk_overlap = TEXT_CHUNK_OVERLAP
     faiss_index_path = FAISS_INDEX_PATH
+    eval_logging_enabled = EVAL_LOGGING_ENABLED
+    eval_reports_dir = Path(EVAL_REPORTS_DIR)
 
 
 settings = Settings()

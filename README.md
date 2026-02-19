@@ -14,6 +14,7 @@
 - [Project structure](#project-structure)
 - [Architecture](#architecture)
 - [API reference](#api-reference)
+- [📊 RAG Evaluation](#-rag-evaluation)
 - [Maintaining this README](#maintaining-this-readme)
 
 ---
@@ -323,6 +324,58 @@ curl -X POST "http://localhost:8000/documents/upload" \
 ```
 
 **Errors:** 400 if `query` is empty.
+
+---
+
+## 📊 RAG Evaluation
+
+This section documents how to **evaluate** the "Help support assistant" RAG pipeline across **retrieval**, **generation** (faithfulness/hallucinations), **end‑to‑end quality**, and **system** metrics.
+
+### Goals
+- Ensure the assistant's answers are **grounded in retrieved context** (high faithfulness, low hallucinations).
+- Verify **retrieval quality** (recall@k, MRR, nDCG), **attribution**, and **answer relevance**.
+- Track **latency** and **cost**, with reproducible runs and reports.
+
+### 🧩 Components
+```
+eval/
+├── evaluator.py
+├── metrics.py
+├── judge_prompts/
+│   ├── faithfulness.json
+│   └── relevance.json
+├── datasets/
+│   └── eval.jsonl
+└── reports/
+```
+Generation prompt: `prompts/grounded_answer.txt` (enforces grounded answers + inline citations [1], [2]).
+
+### 📦 Installation
+```bash
+pip install -r requirements.txt
+pip install -r requirements-eval.txt
+# Or: pip install transformers sentencepiece nltk
+python -c "import nltk; nltk.download('punkt')"
+# Optional: ragas, trulens-eval
+```
+
+### 🏃 One-command run
+```bash
+# From project root
+python -m eval.evaluator --data eval/datasets/eval.jsonl --k 5 --judge nli --out eval/reports/run_YYYYMMDD_HHMM/
+python -m eval.evaluator --data eval/datasets/eval.jsonl --k 5 --judge llm --out eval/reports/run_YYYYMMDD_HHMM/
+```
+Reports are written to the `--out` directory as `report.json`, `report.csv`, `report.md`, and `report.html`.
+
+### Metrics
+- **Retrieval:** Recall@k, MRR@k, nDCG@k, Coverage, Redundancy.
+- **Generation:** Faithfulness (NLI and/or LLM-as-judge), Hallucination rate, Answer relevance, Attribution (precision & recall), Context utilization, Conciseness.
+- **End-to-end:** Exact Match, F1, Nugget F1 (when gold answers/nuggets exist).
+- **System:** Latency (p50/p95) per stage, tokens in/out.
+
+### Eval dataset
+Populate `eval/datasets/eval.jsonl` with one JSON object per line:
+- `query` (required), `ground_truth`, `gold_passages` (list), `nuggets` (list).
 
 ---
 

@@ -1,7 +1,8 @@
 """RAG: vector search + prompt + LLM. Async-friendly by running blocking calls in executor."""
 import asyncio
 import logging
-from typing import Dict, List, Optional
+import time
+from typing import Dict, List, Optional, Tuple, Any
 
 from core.config import settings
 from core.logging_config import setup_logging
@@ -38,7 +39,7 @@ Do NOT break character. Always sound like a helpful support assistant.
 def _build_prompt(query: str, context: str, history: List[Dict[str, str]]) -> str:
     prompt = SUPPORT_ASSISTANT_SYSTEM_PROMPT + "\n\n"
     if context:
-        prompt += "RAG Knowledge Base (use only this information to answer):\n" + context + "\n\n"
+        prompt += "RAG Knowledge Base (cite each claim with the source number in square brackets, e.g. [1], [2]):\n" + context + "\n\n"
     else:
         prompt += "No knowledge articles were found for this query. If the user's question cannot be answered from the knowledge base, respond with: \"I'm sorry, but I don't have the information to answer that. Please contact support for further assistance.\"\n\n"
     if history:
@@ -49,6 +50,22 @@ def _build_prompt(query: str, context: str, history: List[Dict[str, str]]) -> st
         prompt += "\n"
     prompt += f"User: {query}\nAssistant:"
     return prompt
+
+
+def eval_retrieve_and_build_prompt(query: str, top_k: int) -> Tuple[List[Dict[str, Any]], str, str]:
+    """
+    Synchronous helper for evaluation: run retrieval and return (results, context, prompt).
+    Caller can then time LLM invoke separately.
+    """
+    prefix = f"passage: {query}" if settings.asymmetric_embedding else query
+    model = get_embedding_model()
+    q_emb = model.encode(prefix).tolist()
+    results = vector_search(q_emb, top_k=top_k)
+    context = ""
+    for i, hit in enumerate(results):
+        context += f"[{i + 1}] {hit['_source']['text']}\n\n"
+    prompt = _build_prompt(query, context, [])
+    return results, context, prompt
 
 
 async def chat_response(
@@ -71,9 +88,13 @@ async def chat_response(
             q_emb = model.encode(prefix).tolist()
             return vector_search(q_emb, top_k=num_results)
 
+        t0 = time.perf_counter()
         results = await loop.run_in_executor(None, _encode_and_search)
+        if getattr(settings, "eval_logging_enabled", False):
+            logger.info("eval_latency_retrieve_seconds=%.4f", time.perf_counter() - t0)
         for i, hit in enumerate(results):
-            context += f"Document {i}:\n{hit['_source']['text']}\n\n"
+            # [n] format for citation and attribution evaluation
+            context += f"[{i + 1}] {hit['_source']['text']}\n\n"
 
     prompt = _build_prompt(query, context, history)
 
@@ -82,8 +103,12 @@ async def chat_response(
         return llm.invoke(prompt)
 
     loop = asyncio.get_event_loop()
+    t0 = time.perf_counter()
     try:
-        return await loop.run_in_executor(None, _invoke_llm) or ""
+        out = await loop.run_in_executor(None, _invoke_llm) or ""
+        if getattr(settings, "eval_logging_enabled", False):
+            logger.info("eval_latency_generate_seconds=%.4f", time.perf_counter() - t0)
+        return out
     except Exception as e:
         logger.exception("LLM invocation failed")
         return f"Sorry, an error occurred: {e!s}"

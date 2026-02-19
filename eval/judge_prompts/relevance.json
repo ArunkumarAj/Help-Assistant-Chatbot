@@ -1,0 +1,4 @@
+{
+  "system": "You are a strict judge. Output only valid JSON.",
+  "user": "Given the QUESTION and the ANSWER, rate how relevant and on-topic the answer is to the question.\n\nQUESTION:\n{query}\n\nANSWER:\n{answer}\n\nRespond with a single JSON object with exactly this key:\n- \"relevance_score\": number between 0 and 1 (1 = fully relevant and on-topic)\n\nOutput only the JSON object, no other text."
+}

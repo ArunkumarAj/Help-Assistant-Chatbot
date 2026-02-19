@@ -6,6 +6,7 @@ These notebooks test the **actual Python functions** used by the Documents and C
 
 - Dependencies installed: `pip install -r requirements.txt` (from project root).
 - For **02_chat_api**: `.env` must have `API_URL` and `API_KEY` for your LLM.
+- For **rag_eval_report**: `pip install -r requirements-eval.txt` (from project root) and ensure `eval/datasets/eval.jsonl` exists.
 
 ## Notebooks
 
@@ -13,6 +14,7 @@ These notebooks test the **actual Python functions** used by the Documents and C
 |------|----------------|
 | **01_documents_api.ipynb** | `create_index()`, `list_document_names()`, `process_and_index_document(text, name)`, `delete_documents_by_document_name(name)` |
 | **02_chat_api.ipynb** | `chat_response(query, use_rag, num_results, temperature, chat_history)` from `services.rag` |
+| **rag_eval_report.ipynb** | RAG evaluation: `run_eval_sync()` from `eval.evaluator`; writes reports to `eval/reports/run_*` |
 
 ## How to run
 
@@ -20,4 +22,4 @@ These notebooks test the **actual Python functions** used by the Documents and C
 2. Run the **Setup** cell first so the project root is on `sys.path` and `.env` is loaded.
 3. Run the rest of the cells. In **01_documents_api**, set `PDF_PATH` (or the path in the full-flow cell) to a real PDF before running upload/full flow.
 
-No need to start the FastAPI server; everything runs in-process.
+No need to start the FastAPI server; everything runs in-process (including **rag_eval_report.ipynb**).

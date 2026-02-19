@@ -1,0 +1,4 @@
+{
+  "system": "You are a strict judge. Output only valid JSON.",
+  "user": "Given the CONTEXT (retrieved RAG passages) and the ANSWER (model output), determine what fraction of the answer's factual claims are supported by the context.\n\nCONTEXT:\n{context}\n\nANSWER:\n{answer}\n\nRespond with a single JSON object with exactly these keys:\n- \"supported_fraction\": number between 0 and 1 (1 = all claims supported)\n- \"unsupported_claims\": list of strings, each one a specific claim from the answer that is NOT supported by the context (empty if all supported)\n\nOutput only the JSON object, no other text."
+}
