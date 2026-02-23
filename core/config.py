@@ -32,6 +32,13 @@ FAISS_INDEX_PATH = os.environ.get("FAISS_INDEX_PATH", str(DATA_DIR / "faiss_inde
 EVAL_LOGGING_ENABLED = os.environ.get("EVAL_LOGGING_ENABLED", "false").lower() in ("true", "1")
 EVAL_REPORTS_DIR = os.environ.get("EVAL_REPORTS_DIR", str(PROJECT_ROOT / "eval" / "reports"))
 
+# Redis cache (RAG: embeddings, retrieval, LLM responses)
+REDIS_URL = os.environ.get("REDIS_URL", "")  # e.g. redis://localhost:6379/0 or redis://:pass@host:6379/0
+CACHE_ENABLED = os.environ.get("CACHE_ENABLED", "false").lower() in ("true", "1")
+CACHE_TTL_EMBEDDING = int(os.environ.get("CACHE_TTL_EMBEDDING", "86400"))   # 24h
+CACHE_TTL_RETRIEVAL = int(os.environ.get("CACHE_TTL_RETRIEVAL", "3600"))   # 1h
+CACHE_TTL_RESPONSE = int(os.environ.get("CACHE_TTL_RESPONSE", "3600"))     # 1h
+
 
 class Settings:
     """Namespace for settings used across the app."""
@@ -48,6 +55,11 @@ class Settings:
     faiss_index_path = FAISS_INDEX_PATH
     eval_logging_enabled = EVAL_LOGGING_ENABLED
     eval_reports_dir = Path(EVAL_REPORTS_DIR)
+    redis_url = REDIS_URL
+    cache_enabled = CACHE_ENABLED
+    cache_ttl_embedding = CACHE_TTL_EMBEDDING
+    cache_ttl_retrieval = CACHE_TTL_RETRIEVAL
+    cache_ttl_response = CACHE_TTL_RESPONSE
 
 
 settings = Settings()

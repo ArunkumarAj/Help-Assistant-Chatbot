@@ -15,6 +15,7 @@
 - [Architecture](#architecture)
 - [API reference](#api-reference)
 - [📊 RAG Evaluation](#-rag-evaluation)
+- [Redis cache (optional)](#redis-cache-optional)
 - [Maintaining this README](#maintaining-this-readme)
 
 ---
@@ -376,6 +377,20 @@ Reports are written to the `--out` directory as `report.json`, `report.csv`, `re
 ### Eval dataset
 Populate `eval/datasets/eval.jsonl` with one JSON object per line:
 - `query` (required), `ground_truth`, `gold_passages` (list), `nuggets` (list).
+
+---
+
+## Redis cache (optional)
+
+An optional **Redis cache** reduces LLM cost (API tokens), improves response speed, avoids recomputing embeddings, and keeps responses consistent for repeated queries. Caching is **off** unless you set `REDIS_URL` and `CACHE_ENABLED=true` in `.env`.
+
+- **Benefits:** Lower token/compute cost, faster answers, no duplicate embedding or retrieval work, consistent answers when `temperature=0`, better throughput and session-friendly behavior.
+- **What is cached:** Query embeddings, retrieval results (top-k chunks), and LLM responses (when `temperature=0`).
+- **Setup:** See **[README_REDIS_CACHE.md](README_REDIS_CACHE.md)** for:
+  - **Local:** Docker (`docker run -d -p 6379:6379 redis:7-alpine`) or a local Redis install.
+  - **Cloud:** Redis Cloud, AWS ElastiCache, Azure Cache for Redis (with example `REDIS_URL` and TLS).
+
+An [LLM caching architecture diagram](notebooks/README.md#llm-caching-architecture) is in the notebooks README.
 
 ---
 

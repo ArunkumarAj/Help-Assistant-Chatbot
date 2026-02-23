@@ -19,3 +19,6 @@ pillow==10.4.0
 # HTTP & config
 requests==2.32.3
 python-dotenv>=1.0.0
+
+# Redis cache (optional; enable with REDIS_URL + CACHE_ENABLED)
+redis>=5.0.0

@@ -4,6 +4,15 @@ import logging
 import time
 from typing import Dict, List, Optional, Tuple, Any
 
+from core.cache import (
+    cache_get_embedding,
+    cache_get_retrieval,
+    cache_get_response,
+    cache_set_embedding,
+    cache_set_retrieval,
+    cache_set_response,
+    hash_prompt,
+)
 from core.config import settings
 from core.logging_config import setup_logging
 from embedding.model import get_embedding_model
@@ -75,28 +84,44 @@ async def chat_response(
     temperature: float = 0.7,
     chat_history: Optional[List[Dict[str, str]]] = None,
 ) -> str:
-    """Run RAG (optional) + LLM. Blocking work runs in executor."""
+    """Run RAG (optional) + LLM. Uses Redis cache for embeddings, retrieval, and (when temperature=0) LLM responses."""
     history = (chat_history or [])[-10:]
     context = ""
+    prefix = f"passage: {query}" if settings.asymmetric_embedding else query
 
     if use_rag:
         loop = asyncio.get_event_loop()
-        prefix = f"passage: {query}" if settings.asymmetric_embedding else query
 
         def _encode_and_search():
-            model = get_embedding_model()
-            q_emb = model.encode(prefix).tolist()
-            return vector_search(q_emb, top_k=num_results)
+            # Embedding cache
+            q_emb = cache_get_embedding(prefix)
+            if q_emb is None:
+                model = get_embedding_model()
+                q_emb = model.encode(prefix).tolist()
+                cache_set_embedding(prefix, q_emb)
+            # Retrieval cache
+            results = cache_get_retrieval(prefix, num_results)
+            if results is None:
+                results = vector_search(q_emb, top_k=num_results)
+                cache_set_retrieval(prefix, num_results, results)
+            return results
 
         t0 = time.perf_counter()
         results = await loop.run_in_executor(None, _encode_and_search)
         if getattr(settings, "eval_logging_enabled", False):
             logger.info("eval_latency_retrieve_seconds=%.4f", time.perf_counter() - t0)
         for i, hit in enumerate(results):
-            # [n] format for citation and attribution evaluation
             context += f"[{i + 1}] {hit['_source']['text']}\n\n"
 
     prompt = _build_prompt(query, context, history)
+
+    # Response cache: only when temperature=0 for consistent, repeatable answers
+    if temperature == 0:
+        ph = hash_prompt(prompt)
+        cached = cache_get_response(ph)
+        if cached is not None:
+            logger.debug("Response cache hit")
+            return cached
 
     def _invoke_llm():
         llm = get_llm(temperature=temperature, top_p=0.9, max_tokens=2000)
@@ -108,6 +133,8 @@ async def chat_response(
         out = await loop.run_in_executor(None, _invoke_llm) or ""
         if getattr(settings, "eval_logging_enabled", False):
             logger.info("eval_latency_generate_seconds=%.4f", time.perf_counter() - t0)
+        if temperature == 0:
+            cache_set_response(hash_prompt(prompt), out)
         return out
     except Exception as e:
         logger.exception("LLM invocation failed")
