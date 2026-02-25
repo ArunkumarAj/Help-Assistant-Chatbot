@@ -16,6 +16,7 @@
 - [API reference](#api-reference)
 - [📊 RAG Evaluation](#-rag-evaluation)
 - [Redis cache (optional)](#redis-cache-optional)
+- [Notebooks](#notebooks)
 - [Maintaining this README](#maintaining-this-readme)
 
 ---
@@ -109,10 +110,10 @@ jam-chatbot/
 ├── logs/                   # App logs (created at runtime)
 ├── data/                   # FAISS index files (created at runtime)
 ├── uploaded_files/         # Uploaded PDFs (created at runtime)
-├── notebooks/              # API test notebooks (optional)
+├── notebooks/              # API test notebooks (optional, in-process)
 │   ├── 01_documents_api.ipynb
 │   ├── 02_chat_api.ipynb
-│   └── README.md
+│   └── rag_eval_report.ipynb
 ├── .env.example
 ├── requirements.txt
 └── README.md
@@ -378,19 +379,173 @@ Reports are written to the `--out` directory as `report.json`, `report.csv`, `re
 Populate `eval/datasets/eval.jsonl` with one JSON object per line:
 - `query` (required), `ground_truth`, `gold_passages` (list), `nuggets` (list).
 
+### Optional: latency logging
+Set in `.env`: `EVAL_LOGGING_ENABLED=true`. Then retrieve and generate latencies are logged (e.g. `eval_latency_retrieve_seconds=...`, `eval_latency_generate_seconds=...`).
+
 ---
 
 ## Redis cache (optional)
 
-An optional **Redis cache** reduces LLM cost (API tokens), improves response speed, avoids recomputing embeddings, and keeps responses consistent for repeated queries. Caching is **off** unless you set `REDIS_URL` and `CACHE_ENABLED=true` in `.env`.
+Optional Redis-backed caching reduces **LLM cost**, **response time**, and **repeated embedding/retrieval work**. Caching is **off** unless `REDIS_URL` and `CACHE_ENABLED=true` in `.env`.
 
-- **Benefits:** Lower token/compute cost, faster answers, no duplicate embedding or retrieval work, consistent answers when `temperature=0`, better throughput and session-friendly behavior.
-- **What is cached:** Query embeddings, retrieval results (top-k chunks), and LLM responses (when `temperature=0`).
-- **Setup:** See **[README_REDIS_CACHE.md](README_REDIS_CACHE.md)** for:
-  - **Local:** Docker (`docker run -d -p 6379:6379 redis:7-alpine`) or a local Redis install.
-  - **Cloud:** Redis Cloud, AWS ElastiCache, Azure Cache for Redis (with example `REDIS_URL` and TLS).
+### Benefits
 
-An [LLM caching architecture diagram](notebooks/README.md#llm-caching-architecture) is in the notebooks README.
+| Benefit | How Redis cache helps |
+|--------|------------------------|
+| **Reduce LLM cost** | Cached responses (when `temperature=0`) avoid repeated API calls and token usage for the same question + context. |
+| **Improve response speed** | Cache hits return in milliseconds instead of running embedding, vector search, and LLM. |
+| **Avoid recomputing embeddings** | Query embeddings are cached by text; repeated or similar queries reuse the same vector. |
+| **Maintain consistent responses** | With `temperature=0`, the same prompt always returns the same cached answer. |
+| **Handle repeated searches in a conversation** | Repeated user questions hit retrieval and/or response cache without re-embedding or re-calling the LLM. |
+| **Improve throughput** | Less CPU (embeddings) and fewer outbound LLM requests, so the system handles more concurrent users. |
+| **Support session memory without high cost** | Conversation turns that repeat earlier context benefit from cached retrieval and responses without storing full history in the LLM call. |
+
+### What is cached
+
+- **Embeddings:** `rag:embed:{hash(query)}` → query embedding vector (TTL: `CACHE_TTL_EMBEDDING`, default 24h).
+- **Retrieval:** `rag:retrieve:{hash(query)}:{top_k}` → list of retrieved chunks (TTL: `CACHE_TTL_RETRIEVAL`, default 1h).
+- **LLM response:** `rag:response:{hash(prompt)}` → model output (TTL: `CACHE_TTL_RESPONSE`, default 1h). Response cache is **only used when `temperature=0`**.
+
+### Redis setup
+
+**1. Install:** `redis` is in `requirements.txt` (`pip install redis`).
+
+**2. Enable in `.env`:**
+```env
+REDIS_URL=redis://localhost:6379/0
+CACHE_ENABLED=true
+```
+Optional TTLs (seconds): `CACHE_TTL_EMBEDDING=86400`, `CACHE_TTL_RETRIEVAL=3600`, `CACHE_TTL_RESPONSE=3600`.
+
+If `REDIS_URL` is missing or `CACHE_ENABLED` is not `true`, the app runs without cache (no Redis required).
+
+#### Local
+
+- **Docker (recommended):** `docker run -d --name redis-rag -p 6379:6379 redis:7-alpine`
+- **Windows (WSL):** `sudo apt install redis-server` then `redis-server`; or [Memurai](https://www.memurai.com/).
+- **macOS:** `brew install redis` then `brew services start redis`
+- **Linux:** `sudo apt install redis-server` then `sudo systemctl start redis-server`
+
+#### Cloud
+
+- **Redis Cloud:** Create a database at [Redis Cloud](https://redis.com/try-free/); use the public endpoint and password: `REDIS_URL=redis://default:PASSWORD@host:port` (or `rediss://` and port 6380 for TLS).
+- **AWS ElastiCache:** Create a Redis cluster; use cluster endpoint: `REDIS_URL=redis://your-cluster.xxxxx.cache.amazonaws.com:6379/0` (add `:AUTH_TOKEN` after `redis://` if using AUTH).
+- **Azure Cache for Redis:** Create an instance; under Access keys use the connection string: `REDIS_URL=redis://:KEY@your-cache.redis.cache.windows.net:6380?ssl=True`.
+
+### Verifying cache
+
+With cache enabled, the app log shows `Redis cache connected: ...` on first use. If Redis is down or misconfigured, you’ll see `Redis cache disabled: ...` and the app continues without cache.
+
+### LLM caching architecture
+
+When Redis cache is enabled, the RAG pipeline uses a three-layer cache:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                              CHAT REQUEST (query, history)                               │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+                                              │
+                                              ▼
+                    ┌─────────────────────────────────────────┐
+                    │  Build RAG context (if use_rag)          │
+                    │  prefix = "passage: {query}" or query   │
+                    └─────────────────────────────────────────┘
+                                              │
+         ┌────────────────────────────────────┼────────────────────────────────────┐
+         ▼                                    ▼                                    ▼
+┌─────────────────┐                ┌─────────────────┐                ┌─────────────────┐
+│  EMBEDDING      │                │  RETRIEVAL       │                │  CONTEXT         │
+│  Cache key:     │                │  Cache key:      │                │  Build prompt:   │
+│  rag:embed:     │                │  rag:retrieve:   │                │  system +       │
+│  {query_hash}   │                │  {query}:{top_k} │                │  [1]...[k] +    │
+│  Hit → vector   │                │  Hit → chunks    │                │  history + query│
+│  Miss → encode  │                │  Miss → FAISS   │                └────────┬────────┘
+│  + cache set    │                │  search + set   │                         │
+└─────────────────┘                └─────────────────┘                         │
+         │                                    │                                  │
+         └────────────────────────────────────┴──────────────────────────────────┘
+                                              │
+                                              ▼
+                    ┌─────────────────────────────────────────┐
+                    │  RESPONSE CACHE (only if temperature=0)  │
+                    │  Key: rag:response:{hash(prompt)}        │
+                    │  Hit → return cached answer              │
+                    └─────────────────────────────────────────┘
+                                              │
+                                    Miss (or temp>0)
+                                              │
+                                              ▼
+                    ┌─────────────────────────────────────────┐
+                    │  LLM (OpenAI-compatible API)             │
+                    │  → response → cache set (if temp=0)      │
+                    └─────────────────────────────────────────┘
+                                              │
+                                              ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                              CHAT RESPONSE (answer)                                      │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Mermaid:**
+
+```mermaid
+flowchart LR
+    subgraph Request
+        Q[query + history]
+    end
+    subgraph Cache["Redis cache"]
+        E[embed cache]
+        R[retrieve cache]
+        Resp[response cache]
+    end
+    subgraph Compute["Compute path"]
+        Emb[embed query]
+        FAISS[FAISS search]
+        LLM[LLM API]
+    end
+    Q --> E
+    E -->|hit| R
+    E -->|miss| Emb
+    Emb --> E
+    Emb --> FAISS
+    FAISS --> R
+    R -->|hit| Resp
+    R -->|miss| Build[build prompt]
+    FAISS --> Build
+    Build --> Resp
+    Resp -->|hit| Out[response]
+    Resp -->|miss| LLM
+    LLM --> Resp
+    LLM --> Out
+```
+
+---
+
+## Notebooks
+
+The `notebooks/` folder contains **in-process** test notebooks (no FastAPI server required).
+
+### Prerequisites
+
+- Dependencies: `pip install -r requirements.txt` (from project root).
+- **02_chat_api:** `.env` must have `API_URL` and `API_KEY`.
+- **rag_eval_report:** `pip install -r requirements-eval.txt` and ensure `eval/datasets/eval.jsonl` exists.
+
+### Notebooks
+
+| File | What it tests |
+|------|----------------|
+| **01_documents_api.ipynb** | `create_index()`, `list_document_names()`, `process_and_index_document(text, name)`, `delete_documents_by_document_name(name)` |
+| **02_chat_api.ipynb** | `chat_response(query, use_rag, num_results, temperature, chat_history)` from `services.rag` |
+| **rag_eval_report.ipynb** | RAG evaluation: `run_eval_sync()` from `eval.evaluator`; writes reports to `eval/reports/run_*` |
+
+### How to run
+
+1. Open the notebook (e.g. from project root: `jupyter notebook notebooks/01_documents_api.ipynb`, or in VS Code/Cursor).
+2. Run the **Setup** cell first (project root on `sys.path`, `.env` loaded).
+3. Run the rest. In **01_documents_api**, set `PDF_PATH` to a real PDF before upload/full flow.
+
+No need to start the FastAPI server; everything runs in-process (including **rag_eval_report.ipynb**).
 
 ---
 
