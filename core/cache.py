@@ -23,15 +23,20 @@ def _get_redis():
     if _redis_client is not None:
         return _redis_client
     if not getattr(settings, "cache_enabled", False) or not getattr(settings, "redis_url", ""):
+        logger.info(
+            "Redis cache not configured (set REDIS_URL and CACHE_ENABLED=true in .env to enable)"
+        )
+        _redis_client = False
         return None
     try:
         import redis
         _redis_client = redis.from_url(settings.redis_url, decode_responses=True)
         _redis_client.ping()
-        logger.info("Redis cache connected: %s", settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url)
+        url_display = settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url
+        logger.info("Redis cache connected: %s", url_display)
         return _redis_client
     except Exception as e:
-        logger.warning("Redis cache disabled: %s", e)
+        logger.warning("Redis cache disabled (connection failed): %s", e)
         _redis_client = False
         return None
 
@@ -57,6 +62,7 @@ def cache_get_embedding(query_prefix: str) -> Optional[List[float]]:
         raw = client.get(key)
         if raw is None:
             return None
+        logger.info("RAG cache hit: embedding")
         return json.loads(raw)
     except Exception as e:
         logger.debug("Cache get embedding failed: %s", e)
@@ -86,6 +92,7 @@ def cache_get_retrieval(query_prefix: str, top_k: int) -> Optional[List[Dict[str
         raw = client.get(key)
         if raw is None:
             return None
+        logger.info("RAG cache hit: retrieval")
         return json.loads(raw)
     except Exception as e:
         logger.debug("Cache get retrieval failed: %s", e)
@@ -112,7 +119,11 @@ def cache_get_response(prompt_hash: str) -> Optional[str]:
         return None
     key = _key("response", prompt_hash)
     try:
-        return client.get(key)
+        raw = client.get(key)
+        if raw is None:
+            return None
+        logger.info("RAG cache hit: response (message served from cache)")
+        return raw
     except Exception as e:
         logger.debug("Cache get response failed: %s", e)
         return None

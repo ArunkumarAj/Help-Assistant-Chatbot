@@ -120,7 +120,6 @@ async def chat_response(
         ph = hash_prompt(prompt)
         cached = cache_get_response(ph)
         if cached is not None:
-            logger.debug("Response cache hit")
             return cached
 
     def _invoke_llm():
