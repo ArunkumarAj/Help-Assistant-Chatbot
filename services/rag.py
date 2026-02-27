@@ -13,6 +13,7 @@ from core.cache import (
     cache_set_response,
     hash_prompt,
 )
+from core.chat_log import SOURCE_LLM_ONLY, SOURCE_RAG, SOURCE_RAG_NO_HITS, write_chat_log
 from core.config import settings
 from core.logging_config import setup_logging
 from embedding.model import get_embedding_model
@@ -88,6 +89,7 @@ async def chat_response(
     """Run RAG (optional) + LLM. Uses Redis cache for embeddings, retrieval, and (when temperature=0) LLM responses."""
     history = (chat_history or [])[-10:]
     context = ""
+    num_chunks = 0
     prefix = f"passage: {query}" if settings.asymmetric_embedding else query
 
     if use_rag:
@@ -109,6 +111,7 @@ async def chat_response(
 
         t0 = time.perf_counter()
         results = await loop.run_in_executor(None, _encode_and_search)
+        num_chunks = len(results)
         if getattr(settings, "eval_logging_enabled", False):
             logger.info("eval_latency_retrieve_seconds=%.4f", time.perf_counter() - t0)
         for i, hit in enumerate(results):
@@ -122,6 +125,11 @@ async def chat_response(
         ph = hash_prompt(prompt)
         cached = cache_get_response(ph)
         if cached is not None:
+            _source = SOURCE_RAG if (use_rag and num_chunks > 0) else (SOURCE_RAG_NO_HITS if use_rag else SOURCE_LLM_ONLY)
+            write_chat_log(
+                query, cached, _source,
+                num_chunks=num_chunks, from_cache=True, temperature=temperature,
+            )
             return cached
 
     def _invoke_llm():
@@ -136,7 +144,18 @@ async def chat_response(
             logger.info("eval_latency_generate_seconds=%.4f", time.perf_counter() - t0)
         if temperature == 0:
             cache_set_response(hash_prompt(prompt), out)
+        _source = SOURCE_RAG if (use_rag and num_chunks > 0) else (SOURCE_RAG_NO_HITS if use_rag else SOURCE_LLM_ONLY)
+        write_chat_log(
+            query, out, _source,
+            num_chunks=num_chunks, from_cache=False, temperature=temperature,
+        )
         return out
     except Exception as e:
         logger.exception("LLM invocation failed")
-        return f"Sorry, an error occurred: {e!s}"
+        err_msg = f"Sorry, an error occurred: {e!s}"
+        write_chat_log(
+            query, err_msg, SOURCE_LLM_ONLY,
+            num_chunks=num_chunks, from_cache=False, temperature=temperature,
+            extra={"error": str(e)},
+        )
+        return err_msg

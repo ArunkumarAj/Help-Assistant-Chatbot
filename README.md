@@ -65,7 +65,7 @@
 | Source | Purpose |
 |--------|--------|
 | **.env** | `API_URL`, `API_KEY`, `LLM_MODEL`, `API_BASE_URL` |
-| **core/config.py** (or env) | `EMBEDDING_MODEL_PATH`, `EMBEDDING_DIMENSION`, `TEXT_CHUNK_SIZE`, `TEXT_CHUNK_OVERLAP`, `VECTOR_STORE_PATH`, `LOG_FILE_PATH` |
+| **core/config.py** (or env) | `EMBEDDING_MODEL_PATH`, `EMBEDDING_DIMENSION`, `TEXT_CHUNK_SIZE`, `TEXT_CHUNK_OVERLAP`, `VECTOR_STORE_PATH`, `LOG_FILE_PATH`, `CHAT_LOG_ENABLED`, `CHAT_LOG_PATH` |
 
 ---
 
@@ -84,6 +84,23 @@ streamlit run streamlit_app/Welcome.py
 ```
 
 Open the URL shown (e.g. `http://localhost:8501`). Use **Upload Documents** to add PDFs and **Chatbot** to ask questions (enable RAG to use the indexed documents as context).
+
+### Chat logs (RAG vs LLM-only)
+
+Each chat turn is logged so you can see whether the answer came from **RAG** (knowledge base) or **LLM only**:
+
+- **`logs/chat_logs.jsonl`** — One JSON object per line: `timestamp_utc`, `source` (`RAG` | `RAG_NO_HITS` | `LLM_ONLY`), `query`, `response_preview`, `num_chunks`, `from_cache`, `temperature`.
+- **`logs/app.log`** — Human-readable lines, e.g. `Chat | source=RAG (knowledge base) | chunks=5 | query=... | response=...`.
+
+**Source meanings:**
+
+| source        | Meaning |
+|---------------|---------|
+| **RAG**       | Retrieval was used and chunks were found; answer is grounded in the knowledge base. |
+| **RAG_NO_HITS** | RAG was on but no chunks matched; LLM answered with "no information" guidance. |
+| **LLM_ONLY**  | RAG was disabled (`use_rag=false`); answer from the LLM without retrieval. |
+
+Set `CHAT_LOG_ENABLED=false` in `.env` to disable chat logging.
 
 ---
 
@@ -107,7 +124,7 @@ jam-chatbot/
 │   ├── config.py
 │   ├── api_client.py
 │   └── pages/
-├── logs/                   # App logs (created at runtime)
+├── logs/                   # App logs + chat_logs.jsonl (RAG vs LLM per turn, created at runtime)
 ├── data/                   # ChromaDB + BM25 index (created at runtime)
 ├── uploaded_files/         # Uploaded PDFs (created at runtime)
 ├── notebooks/              # API test notebooks (optional, in-process)

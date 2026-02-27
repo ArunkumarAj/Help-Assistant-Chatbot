@@ -28,6 +28,11 @@ VECTOR_STORE_PATH = os.environ.get("VECTOR_STORE_PATH", os.environ.get("CHROMA_P
 # LLM (from env in llm module; listed here for reference)
 # API_URL, API_KEY, LLM_MODEL
 
+# Chat logs: separate file for RAG vs LLM-only conversations (JSONL + human-readable)
+CHAT_LOG_ENABLED = os.environ.get("CHAT_LOG_ENABLED", "true").lower() in ("true", "1")
+CHAT_LOG_PATH = os.environ.get("CHAT_LOG_PATH", str(LOG_DIR / "chat_logs.jsonl"))
+CHAT_LOG_PREVIEW_LEN = int(os.environ.get("CHAT_LOG_PREVIEW_LEN", "200"))  # max chars for query/response in log
+
 # Eval: logging hooks for latency (and optional token estimation) in RAG pipeline
 EVAL_LOGGING_ENABLED = os.environ.get("EVAL_LOGGING_ENABLED", "false").lower() in ("true", "1")
 EVAL_REPORTS_DIR = os.environ.get("EVAL_REPORTS_DIR", str(PROJECT_ROOT / "eval" / "reports"))
@@ -53,6 +58,9 @@ class Settings:
     text_chunk_size = TEXT_CHUNK_SIZE
     text_chunk_overlap = TEXT_CHUNK_OVERLAP
     vector_store_path = VECTOR_STORE_PATH
+    chat_log_enabled = CHAT_LOG_ENABLED
+    chat_log_path = CHAT_LOG_PATH
+    chat_log_preview_len = CHAT_LOG_PREVIEW_LEN
     eval_logging_enabled = EVAL_LOGGING_ENABLED
     eval_reports_dir = Path(EVAL_REPORTS_DIR)
     redis_url = REDIS_URL
