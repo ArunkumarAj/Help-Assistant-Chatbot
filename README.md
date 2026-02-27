@@ -1,6 +1,6 @@
 # RAG Document Assistant
 
-> FastAPI (async) backend + Streamlit frontend for a RAG-based **Help Support Assistant**. Upload PDFs, index with FAISS, and chat with answers strictly from the knowledge base.
+> FastAPI (async) backend + Streamlit frontend for a RAG-based **Help Support Assistant**. Upload PDFs, index with **ChromaDB** (hybrid search), and chat with answers strictly from the knowledge base.
 
 ---
 
@@ -23,9 +23,9 @@
 
 ## Features
 
-- **Document ingestion:** Upload PDFs; text is extracted, chunked, embedded (SentenceTransformer), and stored in a FAISS vector store.
-- **RAG chat:** Query is embedded and matched against stored chunks; top-k context is passed to an LLM with a strict **Help Support Assistant** prompt (answer only from knowledge base, redirect otherwise).
-- **Async API:** FastAPI with blocking work (embedding, FAISS, LLM) offloaded to a thread pool.
+- **Document ingestion:** Upload PDFs; text is extracted, chunked, embedded (SentenceTransformer), and stored in **ChromaDB** (local, persistent).
+- **RAG chat:** **Hybrid search** (dense vectors + BM25 keyword) over ChromaDB; top-k context is passed to an LLM with a strict **Help Support Assistant** prompt (answer only from knowledge base, redirect otherwise).
+- **Async API:** FastAPI with blocking work (embedding, vector store, LLM) offloaded to a thread pool.
 - **Streamlit UI:** Welcome, Chatbot, and Upload Documents pages that call the API.
 
 ---
@@ -65,7 +65,7 @@
 | Source | Purpose |
 |--------|--------|
 | **.env** | `API_URL`, `API_KEY`, `LLM_MODEL`, `API_BASE_URL` |
-| **core/config.py** (or env) | `EMBEDDING_MODEL_PATH`, `EMBEDDING_DIMENSION`, `TEXT_CHUNK_SIZE`, `TEXT_CHUNK_OVERLAP`, `FAISS_INDEX_PATH`, `LOG_FILE_PATH` |
+| **core/config.py** (or env) | `EMBEDDING_MODEL_PATH`, `EMBEDDING_DIMENSION`, `TEXT_CHUNK_SIZE`, `TEXT_CHUNK_OVERLAP`, `VECTOR_STORE_PATH`, `LOG_FILE_PATH` |
 
 ---
 
@@ -100,7 +100,7 @@ jam-chatbot/
 ├── core/                   # Config, logging, text utils
 ├── embedding/              # SentenceTransformer model & embeddings
 ├── llm/                    # Custom LLM client (OpenAI-compatible)
-├── vector_store/          # FAISS index & metadata
+├── vector_store/          # ChromaDB + BM25 (hybrid search)
 ├── services/               # Ingestion & RAG logic
 ├── streamlit_app/         # Streamlit UI
 │   ├── Welcome.py
@@ -108,7 +108,7 @@ jam-chatbot/
 │   ├── api_client.py
 │   └── pages/
 ├── logs/                   # App logs (created at runtime)
-├── data/                   # FAISS index files (created at runtime)
+├── data/                   # ChromaDB + BM25 index (created at runtime)
 ├── uploaded_files/         # Uploaded PDFs (created at runtime)
 ├── notebooks/              # API test notebooks (optional, in-process)
 │   ├── 01_documents_api.ipynb
@@ -125,12 +125,12 @@ jam-chatbot/
 
 ### RAG pipeline
 
-This project uses a **Naive RAG (Retrieve-then-Read)** pipeline:
+This project uses **ChromaDB** as the vector store with **hybrid search** (dense + sparse):
 
-- **Indexing:** PDF → extract text → clean & chunk (word-based, overlap) → embed (SentenceTransformer) → store in FAISS.
-- **Query:** User question → embed query → k-NN search in FAISS → top-k chunks as context → single prompt (system + context + history + query) → one LLM call → response.
+- **Indexing:** PDF → extract text → clean & chunk (word-based, overlap) → embed (SentenceTransformer) → store in **ChromaDB** (persistent, local) and update **BM25** index for keyword search.
+- **Query:** User question → embed query + use query text → **hybrid search** (dense similarity + BM25 keyword, merged with RRF) → top-k chunks as context → single prompt (system + context + history + query) → one LLM call → response.
 
-No query rewriting, hybrid search, or reranker; one embedding model and one retrieval step.
+**Why ChromaDB instead of FAISS:** FAISS only supports dense (vector) similarity search and has no built-in hybrid or keyword search. ChromaDB gives us a persistent store, metadata filtering, and—combined with a BM25 index—**hybrid search** that improves retrieval for both semantic and exact-term queries (e.g. product IDs, policy names). We therefore replaced FAISS with ChromaDB and added BM25 + RRF for better RAG quality.
 
 ### High-level diagram
 
@@ -151,7 +151,7 @@ No query rewriting, hybrid search, or reranker; one embedding model and one retr
          ▼                        ▼                        ▼                                ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐
 │  core/           │    │  embedding/     │    │  vector_store/   │    │  llm/                   │
-│  config, logging │    │  SentenceTrans-  │    │  FAISS index +   │    │  CustomLLM (your API)   │
+│  config, logging │    │  SentenceTrans-  │    │  ChromaDB + BM25 │    │  CustomLLM (your API)   │
 │  text_utils      │    │  former         │    │  metadata        │    │  OpenAI-compatible      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────────────┘
          │                        │                        │                                │
@@ -162,8 +162,8 @@ No query rewriting, hybrid search, or reranker; one embedding model and one retr
                                           │  ingestion | rag               │
                                           └───────────────────────────────┘
 
-  INGEST:  PDF → extract → chunk → embed → FAISS add
-  QUERY:   query → embed → FAISS search → prompt → LLM → response
+  INGEST:  PDF → extract → chunk → embed → ChromaDB + BM25 add
+  QUERY:   query → embed + text → hybrid search (Chroma + BM25, RRF) → prompt → LLM → response
 ```
 
 **Mermaid** (for viewers that support it):
@@ -182,7 +182,7 @@ flowchart TB
     subgraph Backend[" "]
         Core[core]
         Embed[embedding]
-        FAISS[vector_store]
+        Chroma[vector_store]
         LLM[llm]
         Svc[services]
     end
@@ -194,7 +194,7 @@ flowchart TB
     Chat --> Svc
     Svc --> Core
     Svc --> Embed
-    Svc --> FAISS
+    Svc --> Chroma
     Svc --> LLM
 ```
 
@@ -226,7 +226,7 @@ Base URL: `http://localhost:8000` (or your `API_BASE_URL`).
 |--------|------------|------|-------------|
 | GET    | /documents | -    | List unique document names in the vector store |
 
-**Process:** Ensure FAISS index exists → load metadata → return unique `document_name` values (sorted).
+**Process:** Ensure ChromaDB collection exists → return unique `document_name` values (sorted).
 
 **Response (200):**
 ```json
@@ -246,7 +246,7 @@ Base URL: `http://localhost:8000` (or your `API_BASE_URL`).
 |--------|--------------------|--------------------|-------------|
 | POST   | /documents/upload  | multipart/form-data | Upload PDF: extract text, chunk, embed, index |
 
-**Process:** Validate PDF → read bytes → extract text (PyPDF2) → save file under `uploaded_files/` → ensure index exists and name not duplicate → chunk text → embed (SentenceTransformer, thread pool) → add to FAISS + metadata → return counts.
+**Process:** Validate PDF → read bytes → extract text (PyPDF2) → save file under `uploaded_files/` → ensure collection exists and name not duplicate → chunk text → embed (SentenceTransformer, thread pool) → add to ChromaDB + BM25 index → return counts.
 
 **Request:** Form field `file` = PDF file.
 
@@ -292,7 +292,7 @@ curl -X POST "http://localhost:8000/documents/upload" \
 |--------|-------|------|-------------|
 | POST   | /chat | JSON | One support-style reply; optional RAG retrieval |
 
-**Process:** Validate `query` → if `use_rag`: embed query → FAISS k-NN → top-k chunks as context → build prompt (Help Support Assistant system + context + history + query) → call LLM → return response.
+**Process:** Validate `query` → if `use_rag`: embed query → hybrid search (ChromaDB + BM25, RRF) → top-k chunks as context → build prompt (Help Support Assistant system + context + history + query) → call LLM → return response.
 
 **Request body:**
 
@@ -376,8 +376,21 @@ Reports are written to the `--out` directory as `report.json`, `report.csv`, `re
 - **System:** Latency (p50/p95) per stage, tokens in/out.
 
 ### Eval dataset
-Populate `eval/datasets/eval.jsonl` with one JSON object per line:
-- `query` (required), `ground_truth`, `gold_passages` (list), `nuggets` (list).
+Populate `eval/datasets/eval.jsonl` with one JSON object per line (one line per test case). Each line is a single JSON object with the keys below.
+
+| Key | Required | Meaning |
+|-----|----------|---------|
+| **query** | Yes | The user question to run through RAG (retrieval + generation). |
+| **ground_truth** | No | Reference answer; used for **Exact Match** and **token F1**. |
+| **gold_passages** | No | List of passages that *should* be retrieved for this query; used for **Recall@k**, **MRR**, **nDCG**, **Coverage**. |
+| **nuggets** | No | List of key facts the answer should contain; used for **Nugget F1**. |
+
+**Understanding the keys**
+
+- **query** — The exact question you send to the RAG pipeline. The evaluator runs retrieval (embed + ChromaDB hybrid search) and then generation (LLM) for this string. Every test case must have a `query`.
+- **ground_truth** — The ideal or reference answer for this question. Used to score the model’s answer with **Exact Match** (full string match after normalizing) and **token F1** (word-overlap). Omit if you don’t have a single “correct” answer; those metrics will be skipped or zero for that row.
+- **gold_passages** — Passages from your knowledge base that *should* appear in the top‑k retrieval for this query. The evaluator compares what was actually retrieved to this list to compute **Recall@k** (did any gold passage appear in top‑k?), **MRR** (rank of first relevant passage), **nDCG@k**, and **Coverage** (fraction of gold passages present in retrieved set). Use text that matches or closely overlaps your indexed chunks. Omit or leave empty if you’re not measuring retrieval quality.
+- **nuggets** — Short, atomic facts that the answer ought to include (e.g. “10 MB”, “Member Country Guarantee”). Used for **Nugget F1**: the evaluator checks how many of these appear in the model’s answer. Good for checking that key information is not missing, without requiring a full sentence match like `ground_truth`.
 
 ### Optional: latency logging
 Set in `.env`: `EVAL_LOGGING_ENABLED=true`. Then retrieve and generate latencies are logged (e.g. `eval_latency_retrieve_seconds=...`, `eval_latency_generate_seconds=...`).
@@ -459,7 +472,7 @@ When Redis cache is enabled, the RAG pipeline uses a three-layer cache:
 │  rag:embed:     │                │  rag:retrieve:   │                │  system +       │
 │  {query_hash}   │                │  {query}:{top_k} │                │  [1]...[k] +    │
 │  Hit → vector   │                │  Hit → chunks    │                │  history + query│
-│  Miss → encode  │                │  Miss → FAISS   │                └────────┬────────┘
+│  Miss → encode  │                │  Miss → Chroma  │                └────────┬────────┘
 │  + cache set    │                │  search + set   │                         │
 └─────────────────┘                └─────────────────┘                         │
          │                                    │                                  │
@@ -500,18 +513,18 @@ flowchart LR
     end
     subgraph Compute["Compute path"]
         Emb[embed query]
-        FAISS[FAISS search]
+        Chroma[Chroma hybrid]
         LLM[LLM API]
     end
     Q --> E
     E -->|hit| R
     E -->|miss| Emb
     Emb --> E
-    Emb --> FAISS
-    FAISS --> R
+    Emb --> Chroma
+    Chroma --> R
     R -->|hit| Resp
     R -->|miss| Build[build prompt]
-    FAISS --> Build
+    Chroma --> Build
     Build --> Resp
     Resp -->|hit| Out[response]
     Resp -->|miss| LLM

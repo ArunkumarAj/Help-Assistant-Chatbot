@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="RAG Document API",
-    description="Async API for document upload, FAISS vector store, and RAG chat.",
+    description="Async API for document upload, ChromaDB vector store (hybrid search), and RAG chat.",
     version="1.0.0",
     lifespan=lifespan,
 )

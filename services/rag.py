@@ -69,10 +69,11 @@ def eval_retrieve_and_build_prompt(query: str, top_k: int) -> Tuple[List[Dict[st
     prefix = f"passage: {query}" if settings.asymmetric_embedding else query
     model = get_embedding_model()
     q_emb = model.encode(prefix).tolist()
-    results = vector_search(q_emb, top_k=top_k)
+    results = vector_search(q_emb, top_k=top_k, query_text=query)
     context = ""
     for i, hit in enumerate(results):
-        context += f"[{i + 1}] {hit['_source']['text']}\n\n"
+        doc_name = hit["_source"].get("document_name", "document")
+        context += f"[{i + 1}] (Source: {doc_name})\n{hit['_source']['text']}\n\n"
     prompt = _build_prompt(query, context, [])
     return results, context, prompt
 
@@ -102,7 +103,7 @@ async def chat_response(
             # Retrieval cache
             results = cache_get_retrieval(prefix, num_results)
             if results is None:
-                results = vector_search(q_emb, top_k=num_results)
+                results = vector_search(q_emb, top_k=num_results, query_text=query)
                 cache_set_retrieval(prefix, num_results, results)
             return results
 
@@ -111,7 +112,8 @@ async def chat_response(
         if getattr(settings, "eval_logging_enabled", False):
             logger.info("eval_latency_retrieve_seconds=%.4f", time.perf_counter() - t0)
         for i, hit in enumerate(results):
-            context += f"[{i + 1}] {hit['_source']['text']}\n\n"
+            doc_name = hit["_source"].get("document_name", "document")
+            context += f"[{i + 1}] (Source: {doc_name})\n{hit['_source']['text']}\n\n"
 
     prompt = _build_prompt(query, context, history)
 

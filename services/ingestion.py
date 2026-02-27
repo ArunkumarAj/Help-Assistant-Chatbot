@@ -1,4 +1,4 @@
-"""Document ingestion: chunk, embed, index into FAISS."""
+"""Document ingestion: chunk, embed, index into ChromaDB (vector store with hybrid search)."""
 import asyncio
 import logging
 from typing import Any, Dict, List, Tuple

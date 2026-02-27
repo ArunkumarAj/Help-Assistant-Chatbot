@@ -5,9 +5,10 @@ uvicorn[standard]>=0.32.0
 # Streamlit UI
 streamlit==1.39.0
 
-# Embedding & vector store
+# Embedding & vector store (ChromaDB: persistent, hybrid search)
 sentence-transformers==3.1.1
-faiss-cpu==1.9.0
+chromadb>=0.4.22
+rank_bm25>=0.2.2
 torch==2.4.1
 numpy==2.1.2
 

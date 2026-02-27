@@ -22,8 +22,8 @@ ASSYMETRIC_EMBEDDING = os.environ.get("ASSYMETRIC_EMBEDDING", "false").lower() i
 TEXT_CHUNK_SIZE = int(os.environ.get("TEXT_CHUNK_SIZE", "300"))
 TEXT_CHUNK_OVERLAP = int(os.environ.get("TEXT_CHUNK_OVERLAP", "100"))
 
-# FAISS vector store
-FAISS_INDEX_PATH = os.environ.get("FAISS_INDEX_PATH", str(DATA_DIR / "faiss_index"))
+# Vector store (ChromaDB: persistent, hybrid search). Replaces FAISS.
+VECTOR_STORE_PATH = os.environ.get("VECTOR_STORE_PATH", os.environ.get("CHROMA_PERSIST_DIR", str(DATA_DIR / "chroma_db")))
 
 # LLM (from env in llm module; listed here for reference)
 # API_URL, API_KEY, LLM_MODEL
@@ -52,7 +52,7 @@ class Settings:
     asymmetric_embedding = ASSYMETRIC_EMBEDDING
     text_chunk_size = TEXT_CHUNK_SIZE
     text_chunk_overlap = TEXT_CHUNK_OVERLAP
-    faiss_index_path = FAISS_INDEX_PATH
+    vector_store_path = VECTOR_STORE_PATH
     eval_logging_enabled = EVAL_LOGGING_ENABLED
     eval_reports_dir = Path(EVAL_REPORTS_DIR)
     redis_url = REDIS_URL
