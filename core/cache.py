@@ -12,11 +12,15 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# -----------------------------------------------------------------------------
+# Redis connection (lazy, single instance)
+# -----------------------------------------------------------------------------
+
 _redis_client: Optional[Any] = None
 
 
-def _get_redis():
-    """Lazy Redis connection. Returns None if disabled or connection fails."""
+def _get_redis_client() -> Optional[Any]:
+    """Return connected Redis client, or None if cache is disabled or connection fails."""
     global _redis_client
     if _redis_client is False:
         return None
@@ -41,103 +45,118 @@ def _get_redis():
         return None
 
 
-def _key(*parts: str) -> str:
-    """Build a cache key from parts; hash long values."""
-    out = []
-    for p in parts:
-        if len(p) > 200:
-            out.append(hashlib.sha256(p.encode("utf-8")).hexdigest()[:32])
+def _build_cache_key(*parts: str) -> str:
+    """Build a cache key from parts; long values are hashed to keep keys short."""
+    key_parts = []
+    for part in parts:
+        if len(part) > 200:
+            key_parts.append(hashlib.sha256(part.encode("utf-8")).hexdigest()[:32])
         else:
-            out.append(p)
-    return "rag:" + ":".join(out)
+            key_parts.append(part)
+    return "rag:" + ":".join(key_parts)
+
+
+# -----------------------------------------------------------------------------
+# Embedding cache
+# -----------------------------------------------------------------------------
 
 
 def cache_get_embedding(query_prefix: str) -> Optional[List[float]]:
-    """Return cached query embedding if present."""
-    client = _get_redis()
+    """Return cached query embedding if present; otherwise None."""
+    client = _get_redis_client()
     if not client:
         return None
-    key = _key("embed", query_prefix)
+    key = _build_cache_key("embed", query_prefix)
     try:
-        raw = client.get(key)
-        if raw is None:
+        raw_value = client.get(key)
+        if raw_value is None:
             return None
         logger.info("RAG cache hit: embedding")
-        return json.loads(raw)
+        return json.loads(raw_value)
     except Exception as e:
         logger.debug("Cache get embedding failed: %s", e)
         return None
 
 
 def cache_set_embedding(query_prefix: str, embedding: List[float]) -> None:
-    """Store query embedding in cache."""
-    client = _get_redis()
+    """Store query embedding in cache. No-op if cache is disabled."""
+    client = _get_redis_client()
     if not client:
         return
-    key = _key("embed", query_prefix)
-    ttl = getattr(settings, "cache_ttl_embedding", 86400)
+    key = _build_cache_key("embed", query_prefix)
+    ttl_seconds = getattr(settings, "cache_ttl_embedding", 86400)
     try:
-        client.setex(key, ttl, json.dumps(embedding))
+        client.setex(key, ttl_seconds, json.dumps(embedding))
     except Exception as e:
         logger.debug("Cache set embedding failed: %s", e)
 
 
+# -----------------------------------------------------------------------------
+# Retrieval cache
+# -----------------------------------------------------------------------------
+
+
 def cache_get_retrieval(query_prefix: str, top_k: int) -> Optional[List[Dict[str, Any]]]:
-    """Return cached retrieval results (list of hits with _source.text, _source.document_name)."""
-    client = _get_redis()
+    """Return cached retrieval results (list of hits with _source) if present; otherwise None."""
+    client = _get_redis_client()
     if not client:
         return None
-    key = _key("retrieve", query_prefix, str(top_k))
+    key = _build_cache_key("retrieve", query_prefix, str(top_k))
     try:
-        raw = client.get(key)
-        if raw is None:
+        raw_value = client.get(key)
+        if raw_value is None:
             return None
         logger.info("RAG cache hit: retrieval")
-        return json.loads(raw)
+        return json.loads(raw_value)
     except Exception as e:
         logger.debug("Cache get retrieval failed: %s", e)
         return None
 
 
 def cache_set_retrieval(query_prefix: str, top_k: int, results: List[Dict[str, Any]]) -> None:
-    """Store retrieval results in cache."""
-    client = _get_redis()
+    """Store retrieval results in cache. No-op if cache is disabled."""
+    client = _get_redis_client()
     if not client:
         return
-    key = _key("retrieve", query_prefix, str(top_k))
-    ttl = getattr(settings, "cache_ttl_retrieval", 3600)
+    key = _build_cache_key("retrieve", query_prefix, str(top_k))
+    ttl_seconds = getattr(settings, "cache_ttl_retrieval", 3600)
     try:
-        client.setex(key, ttl, json.dumps(results))
+        client.setex(key, ttl_seconds, json.dumps(results))
     except Exception as e:
         logger.debug("Cache set retrieval failed: %s", e)
 
 
+# -----------------------------------------------------------------------------
+# LLM response cache (keyed by prompt hash)
+# -----------------------------------------------------------------------------
+
+
 def cache_get_response(prompt_hash: str) -> Optional[str]:
-    """Return cached LLM response if present."""
-    client = _get_redis()
+    """Return cached LLM response for this prompt hash if present; otherwise None."""
+    client = _get_redis_client()
     if not client:
         return None
-    key = _key("response", prompt_hash)
+    key = _build_cache_key("response", prompt_hash)
     try:
-        raw = client.get(key)
-        if raw is None:
+        raw_value = client.get(key)
+        if raw_value is None:
             return None
         logger.info("RAG cache hit: response (message served from cache)")
-        return raw
+        return raw_value
     except Exception as e:
         logger.debug("Cache get response failed: %s", e)
         return None
 
 
 def cache_set_response(prompt_hash: str, response: str) -> None:
-    """Store LLM response in cache."""
-    client = _get_redis()
+    """Store LLM response in cache. No-op if cache is disabled."""
+    client = _get_redis_client()
     if not client:
         return
-    key = _key("response", prompt_hash)
-    ttl = getattr(settings, "cache_ttl_response", 3600)
+    key = _build_cache_key("response", prompt_hash)
+    ttl_seconds = getattr(settings, "cache_ttl_response", 3600)
     try:
-        client.setex(key, ttl, response)
+        client.setex(key, ttl_seconds, response)
     except Exception as e:
         logger.debug("Cache set response failed: %s", e)
 

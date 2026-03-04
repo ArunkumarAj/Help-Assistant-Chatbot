@@ -1,19 +1,29 @@
-"""Streamlit welcome page. Run with: streamlit run streamlit_app/Welcome.py"""
-import logging
+"""
+Streamlit welcome page.
+
+Run with: streamlit run streamlit_app/Welcome.py
+
+Adds project root to sys.path so streamlit_app.config and api_client can be
+resolved. This page does not call the backend; it only describes the app.
+"""
 import sys
 from pathlib import Path
 
-# Add project root so streamlit_app.config and api_client work
+import streamlit as st
+
+# Ensure project root is on path for config and api_client when running as streamlit run streamlit_app/Welcome.py
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import streamlit as st
 
-# No backend imports for welcome page
+# -----------------------------------------------------------------------------
+# Styling
+# -----------------------------------------------------------------------------
 
 
-def apply_css() -> None:
+def _apply_page_style() -> None:
+    """Inject CSS for colors and layout."""
     st.markdown(
         """
         <style>
@@ -31,8 +41,12 @@ def apply_css() -> None:
     )
 
 
+# -----------------------------------------------------------------------------
+# Page content
+# -----------------------------------------------------------------------------
+
 st.set_page_config(page_title="RAG Document Assistant", page_icon="🤖")
-apply_css()
+_apply_page_style()
 
 st.sidebar.markdown("<h2 style='text-align: center;'>RAG Document Assistant</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("<h4 style='text-align: center;'>Your Conversational Platform</h4>", unsafe_allow_html=True)

@@ -1,6 +1,12 @@
 """
 RAG evaluation metrics: retrieval, generation, end-to-end, and system.
-Minimal dependencies; NLI uses transformers when available.
+
+- Retrieval: recall@k, MRR@k, nDCG@k, coverage, redundancy.
+- Generation: faithfulness (NLI or LLM judge), hallucination, relevance, attribution, context utilization, conciseness.
+- E2E: exact match, F1, nugget F1.
+- System: latency percentiles, token counts.
+
+NLI uses transformers when available; otherwise LLM judge or fallbacks.
 """
 from __future__ import annotations
 
@@ -10,8 +16,12 @@ import statistics
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-# Optional NLI (faithfulness)
+# -----------------------------------------------------------------------------
+# NLI pipeline (optional, for faithfulness)
+# -----------------------------------------------------------------------------
+
 _nli_pipeline = None
+
 
 def _get_nli_pipeline():
     global _nli_pipeline
@@ -303,10 +313,10 @@ def _token_f1(pred_tokens: set, gold_tokens: set) -> float:
 
 
 def f1_score(predicted: str, ground_truth: str) -> float:
-    """Token-level F1."""
-    p = set(_normalize(predicted).split())
-    g = set(_normalize(ground_truth).split())
-    return _token_f1(p, g)
+    """Token-level F1 between predicted and ground truth."""
+    pred_set = set(_normalize(predicted).split())
+    gold_set = set(_normalize(ground_truth).split())
+    return _token_f1(pred_set, gold_set)
 
 
 def nugget_f1(predicted: str, nuggets: List[str]) -> float:

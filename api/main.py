@@ -1,4 +1,12 @@
-"""FastAPI application: async RAG and document APIs."""
+"""
+FastAPI application: RAG chat and document APIs.
+
+- /health: liveness check
+- /documents: list, upload, delete PDFs (ChromaDB + BM25)
+- /chat: single RAG chat response (optional retrieval, citations in response)
+
+On startup, log/data/upload directories are created. CORS allows all origins.
+"""
 from contextlib import asynccontextmanager
 import os
 
@@ -12,14 +20,23 @@ from core.logging_config import setup_logging
 setup_logging()
 
 
+# -----------------------------------------------------------------------------
+# Lifespan: ensure directories exist
+# -----------------------------------------------------------------------------
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Ensure log/data dirs exist on startup."""
+    """On startup: create log, data, and upload directories if missing."""
     settings.log_dir.mkdir(parents=True, exist_ok=True)
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     yield
 
+
+# -----------------------------------------------------------------------------
+# App and routes
+# -----------------------------------------------------------------------------
 
 app = FastAPI(
     title="RAG Document API",
@@ -27,6 +44,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

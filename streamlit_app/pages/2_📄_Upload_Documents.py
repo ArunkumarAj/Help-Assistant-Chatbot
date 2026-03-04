@@ -1,20 +1,31 @@
-"""Upload Documents page: calls GET /documents, POST /documents/upload, DELETE /documents/{name}."""
+"""
+Upload Documents page: list, upload, and delete PDFs via the API.
+
+Calls GET /documents, POST /documents/upload, DELETE /documents/{name}.
+Large PDFs may take several minutes to process.
+"""
 import logging
-import os
 import sys
 import time
 from pathlib import Path
 
+import streamlit as st
+
+# Project root on path for imports
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import streamlit as st
 from streamlit_app.api_client import list_documents, upload_document, delete_document
 from streamlit_app.config import API_BASE_URL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Page config and style
+# -----------------------------------------------------------------------------
 
 st.set_page_config(page_title="Upload Documents", page_icon="📂")
 st.markdown(
@@ -39,13 +50,21 @@ st.sidebar.markdown("<h4 style='text-align: center;'>Upload & Manage PDFs</h4>",
 st.sidebar.markdown("<div class='footer-text'>© 2024</div>", unsafe_allow_html=True)
 
 
-def render_upload_page() -> None:
+# -----------------------------------------------------------------------------
+# Upload page logic
+# -----------------------------------------------------------------------------
+
+
+def _render_upload_page() -> None:
     st.title("Upload Documents")
 
     if "documents" not in st.session_state:
         st.session_state["documents"] = []
+
+    # Show success message after a delete
     if "deleted_file" in st.session_state:
-        msg = st.session_state.get("deleted_message", f"Deleted '{st.session_state['deleted_file']}' from the knowledge base and uploaded files.")
+        default_msg = f"Deleted '{st.session_state['deleted_file']}' from the knowledge base and uploaded files."
+        msg = st.session_state.get("deleted_message", default_msg)
         st.success(msg)
         del st.session_state["deleted_file"]
         if "deleted_message" in st.session_state:
@@ -58,11 +77,16 @@ def render_upload_page() -> None:
         st.code("uvicorn api.main:app --reload --host 0.0.0.0 --port 8000")
         return
 
-    # Build list for display (we don't have file content from API, only names)
-    st.session_state["documents"] = [{"filename": name, "file_path": None} for name in document_names]
+    st.session_state["documents"] = [
+        {"filename": name, "file_path": None} for name in document_names
+    ]
 
-    st.caption("Large PDFs may take several minutes to process (extract, chunk, embed, index). Please wait.")
-    uploaded_files = st.file_uploader("Upload PDF documents", type="pdf", accept_multiple_files=True)
+    st.caption(
+        "Large PDFs may take several minutes to process (extract, chunk, embed, index). Please wait."
+    )
+    uploaded_files = st.file_uploader(
+        "Upload PDF documents", type="pdf", accept_multiple_files=True
+    )
 
     if uploaded_files:
         with st.spinner("Uploading and processing… This can take a few minutes for large files."):
@@ -71,7 +95,7 @@ def render_upload_page() -> None:
                     st.warning(f"'{uploaded_file.name}' already exists.")
                     continue
                 try:
-                    data = upload_document(uploaded_file.getvalue(), uploaded_file.name)
+                    upload_document(uploaded_file.getvalue(), uploaded_file.name)
                     st.session_state["documents"].append({
                         "filename": uploaded_file.name,
                         "file_path": None,
@@ -89,14 +113,19 @@ def render_upload_page() -> None:
                 with col1:
                     st.write(f"{idx}. {doc['filename']}")
                 with col2:
-                    if st.button("Delete", key=f"del_{doc['filename']}_{idx}", help=f"Delete {doc['filename']} from knowledge base and uploaded files"):
+                    if st.button(
+                        "Delete",
+                        key=f"del_{doc['filename']}_{idx}",
+                        help=f"Delete {doc['filename']} from knowledge base and uploaded files",
+                    ):
                         try:
                             result = delete_document(doc["filename"])
                             chunks_removed = result.get("deleted", 0)
                             st.session_state["documents"].pop(idx - 1)
                             st.session_state["deleted_file"] = doc["filename"]
                             st.session_state["deleted_message"] = (
-                                f"Deleted '{doc['filename']}' from the knowledge base ({chunks_removed} chunks removed) and from uploaded files."
+                                f"Deleted '{doc['filename']}' from the knowledge base "
+                                f"({chunks_removed} chunks removed) and from uploaded files."
                             )
                             time.sleep(0.5)
                             st.rerun()
@@ -105,4 +134,4 @@ def render_upload_page() -> None:
 
 
 if __name__ == "__main__":
-    render_upload_page()
+    _render_upload_page()

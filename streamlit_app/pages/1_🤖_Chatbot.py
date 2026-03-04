@@ -1,4 +1,7 @@
-"""Chatbot page: calls POST /chat API. RAG citations shown as details icon with hover (document id + page)."""
+"""
+Chatbot page: calls POST /chat and displays the response.
+Citation markers [1], [2] are replaced with an info icon; hover shows document name, page, doc_id.
+"""
 import html
 import logging
 import re
@@ -15,6 +18,11 @@ from streamlit_app.config import API_BASE_URL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Page config and style
+# -----------------------------------------------------------------------------
 
 st.set_page_config(page_title="Chatbot", page_icon="🤖")
 st.markdown(
@@ -37,8 +45,13 @@ st.markdown(
 )
 
 
+# -----------------------------------------------------------------------------
+# Citation display: replace [1], [2] with hover icon
+# -----------------------------------------------------------------------------
+
+
 def _response_to_display_html(response_text: str, citations: list) -> str:
-    """Replace [1], [2], ... with a details icon; hover shows document id and page."""
+    """Replace [1], [2], ... with an info icon; hover shows document name, page, doc_id."""
     if not citations:
         return html.escape(response_text)
     text_escaped = html.escape(response_text)
@@ -55,6 +68,11 @@ def _response_to_display_html(response_text: str, citations: list) -> str:
         icon = f'<span class="rag-cite" title="{html.escape(tooltip)}">i</span>'
         text_escaped = re.sub(r"\[" + str(idx) + r"\]", icon, text_escaped)
     return text_escaped
+
+
+# -----------------------------------------------------------------------------
+# Chat UI
+# -----------------------------------------------------------------------------
 
 
 def render_chatbot_page() -> None:
@@ -89,16 +107,17 @@ def render_chatbot_page() -> None:
             else:
                 st.markdown(msg["content"])
 
-    if prompt := st.chat_input("Type your message here..."):
+    user_input = st.chat_input("Type your message here...")
+    if user_input:
         with st.chat_message("user"):
-            st.markdown(prompt)
-        st.session_state["chat_history"].append({"role": "user", "content": prompt})
+            st.markdown(user_input)
+        st.session_state["chat_history"].append({"role": "user", "content": user_input})
 
         with st.chat_message("assistant"):
             with st.spinner("Generating response..."):
                 try:
                     data = api_chat(
-                        query=prompt,
+                        query=user_input,
                         use_rag=st.session_state["use_rag"],
                         num_results=st.session_state["num_results"],
                         temperature=st.session_state["temperature"],
@@ -108,15 +127,15 @@ def render_chatbot_page() -> None:
                     citations = data.get("citations") or []
                     display_html = _response_to_display_html(response_text, citations)
                     st.markdown(display_html, unsafe_allow_html=True)
-                    to_store = display_html
+                    content_to_store = display_html
                     content_is_html = True
                 except Exception as e:
-                    to_store = f"Error calling API ({API_BASE_URL}): {e!s}"
+                    content_to_store = f"Error calling API ({API_BASE_URL}): {e!s}"
                     content_is_html = False
-                    st.markdown(to_store)
+                    st.markdown(content_to_store)
         st.session_state["chat_history"].append({
             "role": "assistant",
-            "content": to_store,
+            "content": content_to_store,
             "content_is_html": content_is_html,
         })
 

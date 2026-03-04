@@ -1,8 +1,11 @@
 """
-RAG evaluation CLI and orchestration.
+RAG evaluation CLI: run retrieval + generation on an eval dataset and write reports.
+
 Usage:
   python -m eval.evaluator --data eval/datasets/eval.jsonl --k 5 --judge nli --out eval/reports/run_YYYYMMDD_HHMM/
   python -m eval.evaluator --data eval/datasets/eval.jsonl --k 5 --judge llm --out eval/reports/run_YYYYMMDD_HHMM/
+
+Outputs: report.json, report.csv, report.md, report.html in the given --out directory.
 """
 from __future__ import annotations
 
@@ -47,6 +50,11 @@ from llm.client import get_llm
 from services.rag import eval_retrieve_and_build_prompt
 
 
+# -----------------------------------------------------------------------------
+# Data and judge prompts
+# -----------------------------------------------------------------------------
+
+
 def load_eval_data(path: str) -> List[Dict[str, Any]]:
     rows = []
     with open(path, "r", encoding="utf-8") as f:
@@ -58,12 +66,12 @@ def load_eval_data(path: str) -> List[Dict[str, Any]]:
     return rows
 
 
-def load_judge_prompt(name: str) -> Dict[str, str]:
+def load_judge_prompt(judge_name: str) -> Dict[str, str]:
     base = Path(__file__).resolve().parent / "judge_prompts"
-    p = base / f"{name}.json"
-    if not p.exists():
+    path = base / f"{judge_name}.json"
+    if not path.exists():
         return {}
-    with open(p, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -114,9 +122,9 @@ def run_eval_sync(
         nuggets = row.get("nuggets") or []
 
         # Retrieve + build prompt
-        t0 = time.perf_counter()
+        start_retrieve = time.perf_counter()
         results, context, prompt = eval_retrieve_and_build_prompt(query, top_k)
-        lat_retrieve.append(time.perf_counter() - t0)
+        lat_retrieve.append(time.perf_counter() - start_retrieve)
 
         retrieved_texts = [r["_source"]["text"] for r in results]
         # Embeddings for redundancy
@@ -128,9 +136,9 @@ def run_eval_sync(
         retrieval_tuples.append((retrieved_texts, gold_passages, chunk_embs, top_k))
 
         # Generate
-        t0 = time.perf_counter()
+        start_generate = time.perf_counter()
         answer = llm.invoke(prompt) or ""
-        lat_generate.append(time.perf_counter() - t0)
+        lat_generate.append(time.perf_counter() - start_generate)
 
         tokens_in.append(estimate_tokens(prompt))
         tokens_out.append(estimate_tokens(answer))
@@ -312,51 +320,53 @@ def run_eval_sync(
 
 
 def _render_markdown(report: Dict[str, Any]) -> str:
-    r = report.get("retrieval", {})
-    g = report.get("generation", {})
-    e = report.get("e2e", {})
-    s = report.get("system", {})
-    m = report.get("metadata", {})
+    """Build a markdown summary of the evaluation report."""
+    retrieval = report.get("retrieval", {})
+    generation = report.get("generation", {})
+    e2e = report.get("e2e", {})
+    system = report.get("system", {})
+    metadata = report.get("metadata", {})
     lines = [
         "# RAG Evaluation Report",
         "",
-        f"**Run:** {m.get('run_at', '')} | **Queries:** {m.get('n_queries', 0)} | **Judge:** {m.get('judge', '')} | **top_k:** {m.get('top_k', 0)}",
+        f"**Run:** {metadata.get('run_at', '')} | **Queries:** {metadata.get('n_queries', 0)} | **Judge:** {metadata.get('judge', '')} | **top_k:** {metadata.get('top_k', 0)}",
         "",
         "## Retrieval",
-        f"- Recall@k: {r.get('recall_at_k', 0):.4f}",
-        f"- MRR@k: {r.get('mrr_at_k', 0):.4f}",
-        f"- nDCG@k: {r.get('ndcg_at_k', 0):.4f}",
-        f"- Coverage: {r.get('coverage', 0):.4f}",
-        f"- Redundancy: {r.get('redundancy', 0):.4f}",
+        f"- Recall@k: {retrieval.get('recall_at_k', 0):.4f}",
+        f"- MRR@k: {retrieval.get('mrr_at_k', 0):.4f}",
+        f"- nDCG@k: {retrieval.get('ndcg_at_k', 0):.4f}",
+        f"- Coverage: {retrieval.get('coverage', 0):.4f}",
+        f"- Redundancy: {retrieval.get('redundancy', 0):.4f}",
         "",
         "## Generation",
-        f"- Faithfulness (NLI): {g.get('faithfulness_nli', 0):.4f}",
-        f"- Faithfulness (LLM): {g.get('faithfulness_llm', 0):.4f}",
-        f"- Hallucination rate: {g.get('hallucination_rate', 0):.4f}",
-        f"- Answer relevance: {g.get('answer_relevance', 0):.4f}",
-        f"- Attribution precision: {g.get('attribution_precision', 0):.4f}",
-        f"- Attribution recall: {g.get('attribution_recall', 0):.4f}",
-        f"- Context utilization: {g.get('context_utilization', 0):.4f}",
-        f"- Conciseness: {g.get('conciseness', 0):.4f}",
+        f"- Faithfulness (NLI): {generation.get('faithfulness_nli', 0):.4f}",
+        f"- Faithfulness (LLM): {generation.get('faithfulness_llm', 0):.4f}",
+        f"- Hallucination rate: {generation.get('hallucination_rate', 0):.4f}",
+        f"- Answer relevance: {generation.get('answer_relevance', 0):.4f}",
+        f"- Attribution precision: {generation.get('attribution_precision', 0):.4f}",
+        f"- Attribution recall: {generation.get('attribution_recall', 0):.4f}",
+        f"- Context utilization: {generation.get('context_utilization', 0):.4f}",
+        f"- Conciseness: {generation.get('conciseness', 0):.4f}",
         "",
         "## End-to-End",
-        f"- Exact match: {e.get('exact_match', 0):.4f}",
-        f"- F1: {e.get('f1', 0):.4f}",
-        f"- Nugget F1: {e.get('nugget_f1', 0):.4f}",
+        f"- Exact match: {e2e.get('exact_match', 0):.4f}",
+        f"- F1: {e2e.get('f1', 0):.4f}",
+        f"- Nugget F1: {e2e.get('nugget_f1', 0):.4f}",
         "",
         "## System",
-        f"- Latency retrieve (p50/p95 s): {s.get('latency_retrieve_p50_s', 0):.4f} / {s.get('latency_retrieve_p95_s', 0):.4f}",
-        f"- Latency generate (p50/p95 s): {s.get('latency_generate_p50_s', 0):.4f} / {s.get('latency_generate_p95_s', 0):.4f}",
-        f"- Tokens in/out: {s.get('tokens_in_total', 0)} / {s.get('tokens_out_total', 0)}",
+        f"- Latency retrieve (p50/p95 s): {system.get('latency_retrieve_p50_s', 0):.4f} / {system.get('latency_retrieve_p95_s', 0):.4f}",
+        f"- Latency generate (p50/p95 s): {system.get('latency_generate_p50_s', 0):.4f} / {system.get('latency_generate_p95_s', 0):.4f}",
+        f"- Tokens in/out: {system.get('tokens_in_total', 0)} / {system.get('tokens_out_total', 0)}",
         "",
     ]
     return "\n".join(lines)
 
 
 def _render_html(report: Dict[str, Any]) -> str:
+    """Wrap the markdown report in a minimal HTML page."""
     import html
-    md = _render_markdown(report)
-    escaped = html.escape(md)
+    markdown_body = _render_markdown(report)
+    escaped = html.escape(markdown_body)
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>RAG Eval Report</title></head><body><pre>{escaped}</pre></body></html>"""
 
 
