@@ -1,6 +1,7 @@
 """RAG: vector search + prompt + LLM. Async-friendly by running blocking calls in executor."""
 import asyncio
 import logging
+import re
 import time
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -46,10 +47,30 @@ Do NOT break character. Always sound like a helpful support assistant.
 """
 
 
+def _citation_label(hit: Dict[str, Any]) -> str:
+    """Build (Source: document, p. N) or (Source: document) when page is missing."""
+    src = hit.get("_source") or {}
+    doc_name = src.get("document_name") or "document"
+    page = src.get("page")
+    if page is not None:
+        return f"(Source: {doc_name}, p. {page})"
+    return f"(Source: {doc_name})"
+
+
+def _replace_citation_markers(response: str, citations: List[str]) -> str:
+    """Replace [1], [2], ... in response with actual (Source: doc, p. N). Replaces from high index first."""
+    for i in range(len(citations) - 1, -1, -1):
+        n = i + 1
+        # Replace [n] or [n] at word boundary so we don't break mid-number
+        pattern = r"\[" + str(n) + r"\]"
+        response = re.sub(pattern, " " + citations[i], response)
+    return response
+
+
 def _build_prompt(query: str, context: str, history: List[Dict[str, str]]) -> str:
     prompt = SUPPORT_ASSISTANT_SYSTEM_PROMPT + "\n\n"
     if context:
-        prompt += "RAG Knowledge Base (cite each claim with the source number in square brackets, e.g. [1], [2]):\n" + context + "\n\n"
+        prompt += "RAG Knowledge Base (cite each claim with the source number in square brackets [1], [2], etc.; each number refers to the block below):\n" + context + "\n\n"
     else:
         prompt += "No knowledge articles were found for this query. If the user's question cannot be answered from the knowledge base, respond with: \"I'm sorry, but I don't have the information to answer that. Please contact support for further assistance.\"\n\n"
     if history:
@@ -73,8 +94,8 @@ def eval_retrieve_and_build_prompt(query: str, top_k: int) -> Tuple[List[Dict[st
     results = vector_search(q_emb, top_k=top_k, query_text=query)
     context = ""
     for i, hit in enumerate(results):
-        doc_name = hit["_source"].get("document_name", "document")
-        context += f"[{i + 1}] (Source: {doc_name})\n{hit['_source']['text']}\n\n"
+        label = _citation_label(hit)
+        context += f"[{i + 1}] {label}\n{hit['_source']['text']}\n\n"
     prompt = _build_prompt(query, context, [])
     return results, context, prompt
 
@@ -90,6 +111,7 @@ async def chat_response(
     history = (chat_history or [])[-10:]
     context = ""
     num_chunks = 0
+    citations: List[str] = []
     prefix = f"passage: {query}" if settings.asymmetric_embedding else query
 
     if use_rag:
@@ -114,9 +136,11 @@ async def chat_response(
         num_chunks = len(results)
         if getattr(settings, "eval_logging_enabled", False):
             logger.info("eval_latency_retrieve_seconds=%.4f", time.perf_counter() - t0)
+        citations = []
         for i, hit in enumerate(results):
-            doc_name = hit["_source"].get("document_name", "document")
-            context += f"[{i + 1}] (Source: {doc_name})\n{hit['_source']['text']}\n\n"
+            label = _citation_label(hit)
+            citations.append(label)
+            context += f"[{i + 1}] {label}\n{hit['_source']['text']}\n\n"
 
     prompt = _build_prompt(query, context, history)
 
@@ -125,12 +149,13 @@ async def chat_response(
         ph = hash_prompt(prompt)
         cached = cache_get_response(ph)
         if cached is not None:
+            out = _replace_citation_markers(cached, citations) if citations else cached
             _source = SOURCE_RAG if (use_rag and num_chunks > 0) else (SOURCE_RAG_NO_HITS if use_rag else SOURCE_LLM_ONLY)
             write_chat_log(
-                query, cached, _source,
+                query, out, _source,
                 num_chunks=num_chunks, from_cache=True, temperature=temperature,
             )
-            return cached
+            return out
 
     def _invoke_llm():
         llm = get_llm(temperature=temperature, top_p=0.9, max_tokens=2000)
@@ -144,6 +169,9 @@ async def chat_response(
             logger.info("eval_latency_generate_seconds=%.4f", time.perf_counter() - t0)
         if temperature == 0:
             cache_set_response(hash_prompt(prompt), out)
+        # Replace [1], [2], ... with (Source: document, p. N) in the response
+        if citations:
+            out = _replace_citation_markers(out, citations)
         _source = SOURCE_RAG if (use_rag and num_chunks > 0) else (SOURCE_RAG_NO_HITS if use_rag else SOURCE_LLM_ONLY)
         write_chat_log(
             query, out, _source,

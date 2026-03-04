@@ -104,7 +104,10 @@ def add_documents(documents: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
         embeddings.append(emb_list)
         text = doc.get("text", "")
         docs_text.append(text)
-        metadatas.append({"document_name": doc["document_name"], "text": text})
+        meta = {"document_name": doc["document_name"], "text": text}
+        if doc.get("page") is not None:
+            meta["page"] = int(doc["page"])
+        metadatas.append(meta)
     coll.add(ids=ids, embeddings=embeddings, documents=docs_text, metadatas=metadatas)
     # Update BM25 index: load existing, append new, save
     try:
@@ -197,11 +200,10 @@ def hybrid_search(
             for i, doc_id in enumerate(result["ids"][0]):
                 doc = (result["documents"] or [[""]])[0][i] if result["documents"] else ""
                 meta = (result["metadatas"] or [{}])[0][i] if result["metadatas"] else {}
-                doc_name = meta.get("document_name", "")
-                dense_hits.append({
-                    "id": doc_id,
-                    "_source": {"text": doc or meta.get("text", ""), "document_name": doc_name},
-                })
+                src = {"text": doc or meta.get("text", ""), "document_name": meta.get("document_name", "")}
+                if meta.get("page") is not None:
+                    src["page"] = meta["page"]
+                dense_hits.append({"id": doc_id, "_source": src})
     except Exception as e:
         logger.warning("Chroma dense query failed: %s", e)
     # Sparse search (BM25)
@@ -219,7 +221,10 @@ def hybrid_search(
                     for j, doc_id in enumerate(coll_all["ids"]):
                         doc = (coll_all["documents"] or [""])[j] if coll_all["documents"] else ""
                         meta = (coll_all["metadatas"] or [{}])[j] if coll_all["metadatas"] else {}
-                        id_to_meta[doc_id] = {"text": doc or meta.get("text", ""), "document_name": meta.get("document_name", "")}
+                        src = {"text": doc or meta.get("text", ""), "document_name": meta.get("document_name", "")}
+                        if meta.get("page") is not None:
+                            src["page"] = meta["page"]
+                        id_to_meta[doc_id] = src
                 for idx in top_indices:
                     if scores[idx] <= 0:
                         continue
@@ -258,7 +263,10 @@ def vector_search(query_embedding: List[float], top_k: int = 5, query_text: Opti
     for i, doc_id in enumerate(result["ids"][0]):
         doc = (result["documents"] or [[""]])[0][i] if result["documents"] else ""
         meta = (result["metadatas"] or [{}])[0][i] if result["metadatas"] else {}
-        out.append({"_source": {"text": doc or meta.get("text", ""), "document_name": meta.get("document_name", "")}})
+        src = {"text": doc or meta.get("text", ""), "document_name": meta.get("document_name", "")}
+        if meta.get("page") is not None:
+            src["page"] = meta["page"]
+        out.append({"_source": src})
     return out
 
 
