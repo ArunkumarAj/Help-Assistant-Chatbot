@@ -559,6 +559,7 @@ The `notebooks/` folder contains **in-process** test notebooks (no FastAPI serve
 
 - Dependencies: `pip install -r requirements.txt` (from project root).
 - **02_chat_api:** `.env` must have `API_URL` and `API_KEY`.
+- **03_chromadb_view:** `pip install pandas` (to display the table).
 - **rag_eval_report:** `pip install -r requirements-eval.txt` and ensure `eval/datasets/eval.jsonl` exists.
 
 ### Notebooks
@@ -567,6 +568,7 @@ The `notebooks/` folder contains **in-process** test notebooks (no FastAPI serve
 |------|----------------|
 | **01_documents_api.ipynb** | `create_index()`, `list_document_names()`, `process_and_index_document(text, name)`, `delete_documents_by_document_name(name)` |
 | **02_chat_api.ipynb** | `chat_response(query, use_rag, num_results, temperature, chat_history)` from `services.rag` |
+| **03_chromadb_view.ipynb** | View ChromaDB vector store as a table (chunk id, document_name, page, text preview); summary by document. |
 | **rag_eval_report.ipynb** | RAG evaluation: `run_eval_sync()` from `eval.evaluator`; writes reports to `eval/reports/run_*` |
 
 ### How to run
