@@ -57,15 +57,14 @@ def _citation_label(hit: Dict[str, Any]) -> str:
     return f"(Source: {doc_name})"
 
 
-def _citation_info(hit: Dict[str, Any], index: int) -> Dict[str, Any]:
-    """Build citation info for API/frontend: chunk_id, document_name, page (for hover tooltip)."""
-    src = hit.get("_source") or {}
-    return {
-        "index": index,
-        "chunk_id": hit.get("id") or "",
-        "document_name": src.get("document_name") or "",
-        "page": src.get("page"),
-    }
+def _replace_citation_markers(response: str, citations: List[str]) -> str:
+    """Replace [1], [2], ... in response with actual (Source: doc, p. N). Replaces from high index first."""
+    for i in range(len(citations) - 1, -1, -1):
+        n = i + 1
+        # Replace [n] or [n] at word boundary so we don't break mid-number
+        pattern = r"\[" + str(n) + r"\]"
+        response = re.sub(pattern, " " + citations[i], response)
+    return response
 
 
 def _build_prompt(query: str, context: str, history: List[Dict[str, str]]) -> str:
@@ -101,6 +100,20 @@ def eval_retrieve_and_build_prompt(query: str, top_k: int) -> Tuple[List[Dict[st
     return results, context, prompt
 
 
+def _citation_meta_list(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Build list of {index, document_name, page, doc_id} for UI (e.g. hover tooltip)."""
+    meta = []
+    for i, hit in enumerate(results):
+        src = hit.get("_source") or {}
+        meta.append({
+            "index": i + 1,
+            "document_name": src.get("document_name") or "",
+            "page": src.get("page"),
+            "doc_id": hit.get("id") or "",
+        })
+    return meta
+
+
 async def chat_response(
     query: str,
     use_rag: bool = True,
@@ -108,11 +121,12 @@ async def chat_response(
     temperature: float = 0.7,
     chat_history: Optional[List[Dict[str, str]]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
-    """Run RAG (optional) + LLM. Returns (response_text, citation_infos). Citation markers [1],[2] stay in text; frontend shows details icon + hover (chunk_id, page)."""
+    """Run RAG (optional) + LLM. Returns (response_text, citation_meta). citation_meta has index, document_name, page, doc_id for UI (e.g. details icon tooltip)."""
     history = (chat_history or [])[-10:]
     context = ""
     num_chunks = 0
-    citation_infos: List[Dict[str, Any]] = []
+    citation_labels: List[str] = []
+    citation_meta: List[Dict[str, Any]] = []
     prefix = f"passage: {query}" if settings.asymmetric_embedding else query
 
     if use_rag:
@@ -136,27 +150,23 @@ async def chat_response(
         if getattr(settings, "eval_logging_enabled", False):
             logger.info("eval_latency_retrieve_seconds=%.4f", time.perf_counter() - t0)
         for i, hit in enumerate(results):
-            label = _citation_label(hit)
-            citation_infos.append(_citation_info(hit, i + 1))
-            context += f"[{i + 1}] {label}\n{hit['_source']['text']}\n\n"
+            citation_labels.append(_citation_label(hit))
+            context += f"[{i + 1}] {citation_labels[-1]}\n{hit['_source']['text']}\n\n"
+        citation_meta = _citation_meta_list(results)
 
     prompt = _build_prompt(query, context, history)
 
-    # Response cache (temperature=0): store and restore response + citations as JSON
-    import json
     if temperature == 0:
         ph = hash_prompt(prompt)
-        cached_raw = cache_get_response(ph)
-        if cached_raw is not None:
-            try:
-                cached = json.loads(cached_raw)
-                out = cached.get("response", cached_raw)
-                citation_infos = cached.get("citations", [])
-            except (TypeError, ValueError):
-                out = cached_raw
+        cached = cache_get_response(ph)
+        if cached is not None:
+            # Leave [1], [2] in text so frontend can show details icon with tooltip
             _source = SOURCE_RAG if (use_rag and num_chunks > 0) else (SOURCE_RAG_NO_HITS if use_rag else SOURCE_LLM_ONLY)
-            write_chat_log(query, out, _source, num_chunks=num_chunks, from_cache=True, temperature=temperature)
-            return (out, citation_infos)
+            write_chat_log(
+                query, cached, _source,
+                num_chunks=num_chunks, from_cache=True, temperature=temperature,
+            )
+            return (cached, citation_meta)
 
     def _invoke_llm():
         llm = get_llm(temperature=temperature, top_p=0.9, max_tokens=2000)
@@ -169,12 +179,20 @@ async def chat_response(
         if getattr(settings, "eval_logging_enabled", False):
             logger.info("eval_latency_generate_seconds=%.4f", time.perf_counter() - t0)
         if temperature == 0:
-            cache_set_response(hash_prompt(prompt), json.dumps({"response": out, "citations": citation_infos}))
+            cache_set_response(hash_prompt(prompt), out)
+        # Do not replace [1],[2] here; frontend will show details icon with document id + page on hover
         _source = SOURCE_RAG if (use_rag and num_chunks > 0) else (SOURCE_RAG_NO_HITS if use_rag else SOURCE_LLM_ONLY)
-        write_chat_log(query, out, _source, num_chunks=num_chunks, from_cache=False, temperature=temperature)
-        return (out, citation_infos)
+        write_chat_log(
+            query, out, _source,
+            num_chunks=num_chunks, from_cache=False, temperature=temperature,
+        )
+        return (out, citation_meta)
     except Exception as e:
         logger.exception("LLM invocation failed")
         err_msg = f"Sorry, an error occurred: {e!s}"
-        write_chat_log(query, err_msg, SOURCE_LLM_ONLY, num_chunks=num_chunks, from_cache=False, temperature=temperature, extra={"error": str(e)})
+        write_chat_log(
+            query, err_msg, SOURCE_LLM_ONLY,
+            num_chunks=num_chunks, from_cache=False, temperature=temperature,
+            extra={"error": str(e)},
+        )
         return (err_msg, [])
