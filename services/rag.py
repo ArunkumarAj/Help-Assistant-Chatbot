@@ -57,14 +57,15 @@ def _citation_label(hit: Dict[str, Any]) -> str:
     return f"(Source: {doc_name})"
 
 
-def _replace_citation_markers(response: str, citations: List[str]) -> str:
-    """Replace [1], [2], ... in response with actual (Source: doc, p. N). Replaces from high index first."""
-    for i in range(len(citations) - 1, -1, -1):
-        n = i + 1
-        # Replace [n] or [n] at word boundary so we don't break mid-number
-        pattern = r"\[" + str(n) + r"\]"
-        response = re.sub(pattern, " " + citations[i], response)
-    return response
+def _citation_info(hit: Dict[str, Any], index: int) -> Dict[str, Any]:
+    """Build citation info for API/frontend: chunk_id, document_name, page (for hover tooltip)."""
+    src = hit.get("_source") or {}
+    return {
+        "index": index,
+        "chunk_id": hit.get("id") or "",
+        "document_name": src.get("document_name") or "",
+        "page": src.get("page"),
+    }
 
 
 def _build_prompt(query: str, context: str, history: List[Dict[str, str]]) -> str:
@@ -106,25 +107,23 @@ async def chat_response(
     num_results: int = 5,
     temperature: float = 0.7,
     chat_history: Optional[List[Dict[str, str]]] = None,
-) -> str:
-    """Run RAG (optional) + LLM. Uses Redis cache for embeddings, retrieval, and (when temperature=0) LLM responses."""
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """Run RAG (optional) + LLM. Returns (response_text, citation_infos). Citation markers [1],[2] stay in text; frontend shows details icon + hover (chunk_id, page)."""
     history = (chat_history or [])[-10:]
     context = ""
     num_chunks = 0
-    citations: List[str] = []
+    citation_infos: List[Dict[str, Any]] = []
     prefix = f"passage: {query}" if settings.asymmetric_embedding else query
 
     if use_rag:
         loop = asyncio.get_event_loop()
 
         def _encode_and_search():
-            # Embedding cache
             q_emb = cache_get_embedding(prefix)
             if q_emb is None:
                 model = get_embedding_model()
                 q_emb = model.encode(prefix).tolist()
                 cache_set_embedding(prefix, q_emb)
-            # Retrieval cache
             results = cache_get_retrieval(prefix, num_results)
             if results is None:
                 results = vector_search(q_emb, top_k=num_results, query_text=query)
@@ -136,26 +135,28 @@ async def chat_response(
         num_chunks = len(results)
         if getattr(settings, "eval_logging_enabled", False):
             logger.info("eval_latency_retrieve_seconds=%.4f", time.perf_counter() - t0)
-        citations = []
         for i, hit in enumerate(results):
             label = _citation_label(hit)
-            citations.append(label)
+            citation_infos.append(_citation_info(hit, i + 1))
             context += f"[{i + 1}] {label}\n{hit['_source']['text']}\n\n"
 
     prompt = _build_prompt(query, context, history)
 
-    # Response cache: only when temperature=0 for consistent, repeatable answers
+    # Response cache (temperature=0): store and restore response + citations as JSON
+    import json
     if temperature == 0:
         ph = hash_prompt(prompt)
-        cached = cache_get_response(ph)
-        if cached is not None:
-            out = _replace_citation_markers(cached, citations) if citations else cached
+        cached_raw = cache_get_response(ph)
+        if cached_raw is not None:
+            try:
+                cached = json.loads(cached_raw)
+                out = cached.get("response", cached_raw)
+                citation_infos = cached.get("citations", [])
+            except (TypeError, ValueError):
+                out = cached_raw
             _source = SOURCE_RAG if (use_rag and num_chunks > 0) else (SOURCE_RAG_NO_HITS if use_rag else SOURCE_LLM_ONLY)
-            write_chat_log(
-                query, out, _source,
-                num_chunks=num_chunks, from_cache=True, temperature=temperature,
-            )
-            return out
+            write_chat_log(query, out, _source, num_chunks=num_chunks, from_cache=True, temperature=temperature)
+            return (out, citation_infos)
 
     def _invoke_llm():
         llm = get_llm(temperature=temperature, top_p=0.9, max_tokens=2000)
@@ -168,22 +169,12 @@ async def chat_response(
         if getattr(settings, "eval_logging_enabled", False):
             logger.info("eval_latency_generate_seconds=%.4f", time.perf_counter() - t0)
         if temperature == 0:
-            cache_set_response(hash_prompt(prompt), out)
-        # Replace [1], [2], ... with (Source: document, p. N) in the response
-        if citations:
-            out = _replace_citation_markers(out, citations)
+            cache_set_response(hash_prompt(prompt), json.dumps({"response": out, "citations": citation_infos}))
         _source = SOURCE_RAG if (use_rag and num_chunks > 0) else (SOURCE_RAG_NO_HITS if use_rag else SOURCE_LLM_ONLY)
-        write_chat_log(
-            query, out, _source,
-            num_chunks=num_chunks, from_cache=False, temperature=temperature,
-        )
-        return out
+        write_chat_log(query, out, _source, num_chunks=num_chunks, from_cache=False, temperature=temperature)
+        return (out, citation_infos)
     except Exception as e:
         logger.exception("LLM invocation failed")
         err_msg = f"Sorry, an error occurred: {e!s}"
-        write_chat_log(
-            query, err_msg, SOURCE_LLM_ONLY,
-            num_chunks=num_chunks, from_cache=False, temperature=temperature,
-            extra={"error": str(e)},
-        )
-        return err_msg
+        write_chat_log(query, err_msg, SOURCE_LLM_ONLY, num_chunks=num_chunks, from_cache=False, temperature=temperature, extra={"error": str(e)})
+        return (err_msg, [])

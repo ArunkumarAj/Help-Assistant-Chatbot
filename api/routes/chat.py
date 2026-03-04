@@ -1,7 +1,7 @@
 """RAG chat: single response (no streaming from API for simplicity)."""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from services.rag import chat_response
 
@@ -21,23 +21,31 @@ class ChatRequest(BaseModel):
     chat_history: Optional[List[ChatMessage]] = None
 
 
+class CitationInfo(BaseModel):
+    index: int
+    chunk_id: str
+    document_name: str
+    page: Optional[int] = None
+
+
 class ChatResponse(BaseModel):
     response: str
+    citations: List[CitationInfo] = []
 
 
 @router.post("", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
-    """Generate a single RAG chat response. Async."""
+    """Generate a single RAG chat response. Returns text with [1],[2] markers and citations for hover tooltips."""
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="query is required")
     history = []
     if req.chat_history:
         history = [{"role": m.role, "content": m.content} for m in req.chat_history]
-    text = await chat_response(
+    text, citations = await chat_response(
         query=req.query,
         use_rag=req.use_rag,
         num_results=req.num_results,
         temperature=req.temperature,
         chat_history=history,
     )
-    return ChatResponse(response=text)
+    return ChatResponse(response=text, citations=[CitationInfo(**c) for c in citations])

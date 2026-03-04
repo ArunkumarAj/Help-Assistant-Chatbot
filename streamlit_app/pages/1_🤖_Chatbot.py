@@ -1,4 +1,5 @@
-"""Chatbot page: calls POST /chat API."""
+"""Chatbot page: calls POST /chat API. RAG citations shown as details icon with hover (document id + page)."""
+import html
 import logging
 import sys
 from pathlib import Path
@@ -28,10 +29,38 @@ st.markdown(
     h1, h2, h3, h4 { color: #006d77; }
     .stChatMessage { background-color: #e0f7fa; color: #006d77; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
     .stChatMessage.user { background-color: #118ab2; color: white; }
+    .rag-cite { display: inline; cursor: help; margin-left: 2px; font-size: 0.95em; color: #006d77; }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
+def _response_with_citation_icons(text: str, citations: list[dict]) -> str:
+    """Replace [1], [2], ... in text with a details icon span; hover shows document id and page."""
+    if not citations:
+        return html.escape(text)
+    cite_by_index = {c["index"]: c for c in citations}
+    # Replace from high index first so [10] before [1]; use placeholders so we can escape the rest
+    placeholders = {}
+    remaining = text
+    for idx in sorted(cite_by_index.keys(), reverse=True):
+        c = cite_by_index[idx]
+        chunk_id = c.get("chunk_id") or ""
+        page = c.get("page")
+        page_str = f", Page: {page}" if page is not None else ""
+        title = f"Document ID: {chunk_id}{page_str}"
+        if c.get("document_name"):
+            title = f"Document: {c['document_name']}{page_str}\nChunk ID: {chunk_id}"
+        marker = f"[{idx}]"
+        span = f'<span class="rag-cite" title="{html.escape(title)}">&#8505;</span>'
+        placeholder = f"__CITE_{idx}__"
+        placeholders[placeholder] = span
+        remaining = remaining.replace(marker, placeholder, 1)
+    out = html.escape(remaining)
+    for placeholder, span in placeholders.items():
+        out = out.replace(placeholder, span)
+    return out
 
 
 def render_chatbot_page() -> None:
@@ -61,7 +90,13 @@ def render_chatbot_page() -> None:
 
     for msg in st.session_state["chat_history"]:
         with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+            content = msg["content"]
+            citations = msg.get("citations", [])
+            if citations and msg["role"] == "assistant":
+                html_content = _response_with_citation_icons(content, citations)
+                st.markdown(html_content, unsafe_allow_html=True)
+            else:
+                st.markdown(content)
 
     if prompt := st.chat_input("Type your message here..."):
         with st.chat_message("user"):
@@ -71,7 +106,7 @@ def render_chatbot_page() -> None:
         with st.chat_message("assistant"):
             with st.spinner("Generating response..."):
                 try:
-                    response_text = api_chat(
+                    response_text, citations = api_chat(
                         query=prompt,
                         use_rag=st.session_state["use_rag"],
                         num_results=st.session_state["num_results"],
@@ -80,8 +115,13 @@ def render_chatbot_page() -> None:
                     )
                 except Exception as e:
                     response_text = f"Error calling API ({API_BASE_URL}): {e!s}"
-                st.markdown(response_text)
-        st.session_state["chat_history"].append({"role": "assistant", "content": response_text})
+                    citations = []
+                if citations:
+                    html_content = _response_with_citation_icons(response_text, citations)
+                    st.markdown(html_content, unsafe_allow_html=True)
+                else:
+                    st.markdown(response_text)
+        st.session_state["chat_history"].append({"role": "assistant", "content": response_text, "citations": citations})
 
 
 if __name__ == "__main__":

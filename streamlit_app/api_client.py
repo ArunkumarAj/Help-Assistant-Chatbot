@@ -53,7 +53,8 @@ def chat(
     num_results: int = 5,
     temperature: float = 0.7,
     chat_history: List[dict] | None = None,
-) -> str:
+) -> tuple[str, list[dict]]:
+    """Returns (response_text, citations). citations: list of {index, chunk_id, document_name, page} for RAG hover tooltips."""
     payload = {
         "query": query,
         "use_rag": use_rag,
@@ -63,4 +64,5 @@ def chat(
     }
     r = requests.post(_url("/chat"), json=payload, timeout=120)
     r.raise_for_status()
-    return r.json().get("response", "")
+    data = r.json()
+    return (data.get("response", ""), data.get("citations", []))
