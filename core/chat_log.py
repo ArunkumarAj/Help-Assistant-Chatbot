@@ -56,9 +56,12 @@ def write_chat_log(
     query_preview = _truncate(query, preview_len)
     response_preview = _truncate(response, preview_len)
 
+    # In the log file, show cache in source so it's obvious cache is working
+    source_in_log = f"{source} (cached)" if from_cache else source
+
     entry = {
         "timestamp_utc": ts,
-        "source": source,
+        "source": source_in_log,
         "query": query_preview,
         "response_preview": response_preview,
         "num_chunks": num_chunks,
