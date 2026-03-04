@@ -61,7 +61,6 @@ def _render_upload_page() -> None:
     if "documents" not in st.session_state:
         st.session_state["documents"] = []
 
-    # Show success message after a delete
     if "deleted_file" in st.session_state:
         default_msg = f"Deleted '{st.session_state['deleted_file']}' from the knowledge base and uploaded files."
         msg = st.session_state.get("deleted_message", default_msg)

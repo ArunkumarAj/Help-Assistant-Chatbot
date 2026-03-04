@@ -26,7 +26,7 @@
 - **Document ingestion:** Upload PDFs; text is extracted, chunked, embedded (SentenceTransformer), and stored in **ChromaDB** (local, persistent).
 - **RAG chat:** **Hybrid search** (dense vectors + BM25 keyword) over ChromaDB; top-k context is passed to an LLM with a strict **Help Support Assistant** prompt (answer only from knowledge base, redirect otherwise).
 - **Async API:** FastAPI with blocking work (embedding, vector store, LLM) offloaded to a thread pool.
-- **Streamlit UI:** Welcome, Chatbot, and Upload Documents pages that call the API.
+- **Streamlit UI:** Home (welcome), chatbot, and upload_documents pages that call the API.
 
 ---
 
@@ -80,7 +80,7 @@ uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 **2. Start the Streamlit UI** (from project root):
 
 ```bash
-streamlit run streamlit_app/Welcome.py
+streamlit run streamlit_app/welcome.py
 ```
 
 Open the URL shown (e.g. `http://localhost:8501`). Use **Upload Documents** to add PDFs and **Chatbot** to ask questions (enable RAG to use the indexed documents as context).
@@ -119,11 +119,13 @@ jam-chatbot/
 ├── llm/                    # Custom LLM client (OpenAI-compatible)
 ├── vector_store/          # ChromaDB + BM25 (hybrid search)
 ├── services/               # Ingestion & RAG logic
-├── streamlit_app/         # Streamlit UI
-│   ├── Welcome.py
+├── streamlit_app/         # Streamlit UI (entry: welcome.py)
+│   ├── welcome.py          # Entry point / home page
 │   ├── config.py
 │   ├── api_client.py
 │   └── pages/
+│       ├── 1_chatbot.py
+│       └── 2_upload_documents.py
 ├── logs/                   # App logs + chat_logs.jsonl (RAG vs LLM per turn, created at runtime)
 ├── data/                   # ChromaDB + BM25 index (created at runtime)
 ├── uploaded_files/         # Uploaded PDFs (created at runtime)
@@ -160,7 +162,7 @@ This project uses **ChromaDB** as the vector store with **hybrid search** (dense
 ┌───────────────────────────────┐        ┌──────────────────────────────────────────┐
 │   STREAMLIT UI                │        │   FASTAPI BACKEND (async)                │
 │   streamlit_app/               │  HTTP  │   api/                                    │
-│   • Welcome, Chatbot, Upload  │◄──────►│   /health, /documents, /chat              │
+│   • welcome, chatbot, upload  │◄──────►│   /health, /documents, /chat              │
 └───────────────────────────────┘        └──────────────────────────────────────────┘
                                                           │
          ┌────────────────────────────────────────────────┼────────────────────────────────┐
