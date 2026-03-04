@@ -60,11 +60,16 @@ async def upload_document(file: UploadFile = File(...)) -> dict:
 
 @router.delete("/{document_name:path}")
 async def delete_document(document_name: str) -> dict:
-    """Delete all chunks for a document and remove file from uploads if present."""
+    """
+    Delete document everywhere: (1) all chunks for this document in the vector store (ChromaDB + BM25),
+    (2) the PDF file from uploaded_files. Path param is URL-decoded by FastAPI.
+    """
     create_index()
+    # 1. Remove from vector DB (ChromaDB + BM25) so it no longer appears in RAG search
     result = delete_documents_by_document_name(document_name)
+    # 2. Remove file from uploads directory
     file_path = settings.upload_dir / document_name
     if file_path.exists():
         file_path.unlink()
-        logger.info("Removed file %s", file_path)
+        logger.info("Removed uploaded file: %s", file_path)
     return result

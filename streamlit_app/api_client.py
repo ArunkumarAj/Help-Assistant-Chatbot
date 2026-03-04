@@ -1,6 +1,7 @@
 """Simple HTTP client for the FastAPI backend."""
 import logging
 from typing import Any, List
+from urllib.parse import quote
 
 import requests
 
@@ -39,7 +40,9 @@ def upload_document(file_bytes: bytes, filename: str) -> dict:
 
 
 def delete_document(document_name: str) -> dict:
-    r = requests.delete(_url(f"/documents/{document_name}"), timeout=30)
+    """Delete document from vector store (ChromaDB) and from uploaded_files. Name is URL-encoded for safety."""
+    encoded_name = quote(document_name, safe=".")  # keep dot for extensions
+    r = requests.delete(_url(f"/documents/{encoded_name}"), timeout=30)
     r.raise_for_status()
     return r.json()
 

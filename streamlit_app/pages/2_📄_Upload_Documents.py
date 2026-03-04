@@ -45,8 +45,11 @@ def render_upload_page() -> None:
     if "documents" not in st.session_state:
         st.session_state["documents"] = []
     if "deleted_file" in st.session_state:
-        st.success(f"Deleted '{st.session_state['deleted_file']}'.")
+        msg = st.session_state.get("deleted_message", f"Deleted '{st.session_state['deleted_file']}' from the knowledge base and uploaded files.")
+        st.success(msg)
         del st.session_state["deleted_file"]
+        if "deleted_message" in st.session_state:
+            del st.session_state["deleted_message"]
 
     try:
         document_names = list_documents()
@@ -86,11 +89,15 @@ def render_upload_page() -> None:
                 with col1:
                     st.write(f"{idx}. {doc['filename']}")
                 with col2:
-                    if st.button("Delete", key=f"del_{doc['filename']}_{idx}", help=f"Delete {doc['filename']}"):
+                    if st.button("Delete", key=f"del_{doc['filename']}_{idx}", help=f"Delete {doc['filename']} from knowledge base and uploaded files"):
                         try:
-                            delete_document(doc["filename"])
+                            result = delete_document(doc["filename"])
+                            chunks_removed = result.get("deleted", 0)
                             st.session_state["documents"].pop(idx - 1)
                             st.session_state["deleted_file"] = doc["filename"]
+                            st.session_state["deleted_message"] = (
+                                f"Deleted '{doc['filename']}' from the knowledge base ({chunks_removed} chunks removed) and from uploaded files."
+                            )
                             time.sleep(0.5)
                             st.rerun()
                         except Exception as e:
