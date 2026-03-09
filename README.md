@@ -107,7 +107,7 @@ Set `CHAT_LOG_ENABLED=false` in `.env` to disable chat logging.
 ## Project structure
 
 ```
-jam-chatbot/
+chatbot/
 ├── api/                    # FastAPI app & routes
 │   ├── main.py
 │   └── routes/

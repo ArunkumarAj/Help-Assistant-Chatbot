@@ -47,7 +47,7 @@ st.markdown(
 )
 st.sidebar.markdown("<h2 style='text-align: center;'>Document Assistant</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("<h4 style='text-align: center;'>Upload & Manage PDFs</h4>", unsafe_allow_html=True)
-st.sidebar.markdown("<div class='footer-text'>© 2024</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div class='footer-text'>© 2026</div>", unsafe_allow_html=True)
 
 
 # -----------------------------------------------------------------------------

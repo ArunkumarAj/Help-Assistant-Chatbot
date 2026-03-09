@@ -46,6 +46,7 @@ Rules:
 2. If the question is outside the knowledge base, say: "I don't have that information. Please contact support."
 3. Be professional, clear, and concise. This is a quick Q&A for dealers, not a long report.
 4. Cite sources with [1], [2] where needed, but keep the answer itself short.
+5. When the user asks what something is (e.g. "what is X?" or "what does X mean?"), give the definition from the context when it appears—e.g. "X means Y"—then add any brief, relevant detail from the same context. Do not only describe what the knowledge base "says" in general; state the definition directly when the context contains it.
 
 Do NOT write long explanations or multiple bullet lists unless the user explicitly asks for detail.
 """
@@ -237,7 +238,7 @@ async def chat_response(
         return (response_text, citation_meta)
     except Exception as e:
         logger.exception("LLM invocation failed")
-        error_message = f"Sorry, an error occurred: {e!s}"
+        error_message = "Sorry, an error occurred. Please try again."
         write_chat_log(
             query,
             error_message,
@@ -245,6 +246,6 @@ async def chat_response(
             num_chunks=num_chunks,
             from_cache=False,
             temperature=temperature,
-            extra={"error": str(e)},
+            extra={"error": str(e)},  # logged server-side only; not returned to user
         )
         return (error_message, [])

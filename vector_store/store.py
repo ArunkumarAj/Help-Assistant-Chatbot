@@ -454,8 +454,7 @@ def vector_search(
     doc_list = result["documents"][0] if result.get("documents") and result["documents"] else [""] * len(ids)
     meta_list = result["metadatas"][0] if result.get("metadatas") and result["metadatas"] else [{}] * len(ids)
     hits = _build_hits_from_chroma_result(ids, doc_list, meta_list)
-    # RAG expects each item to have _source (frontend may use only _source).
-    return [{"_source": h["_source"]} for h in hits]
+    return hits
 
 
 def list_document_names() -> List[str]:

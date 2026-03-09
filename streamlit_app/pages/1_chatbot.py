@@ -98,7 +98,7 @@ def render_chatbot_page() -> None:
     )
     st.sidebar.markdown("<h2 style='text-align: center;'>RAG Chatbot</h2>", unsafe_allow_html=True)
     st.sidebar.markdown("<h4 style='text-align: center;'>Your Conversational Platform</h4>", unsafe_allow_html=True)
-    st.sidebar.markdown("<div class='footer-text'>© 2024</div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div class='footer-text'>© 2026</div>", unsafe_allow_html=True)
 
     for msg in st.session_state["chat_history"]:
         with st.chat_message(msg["role"]):

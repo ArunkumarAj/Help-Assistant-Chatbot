@@ -110,15 +110,29 @@ async def upload_document(file: UploadFile = File(...)) -> dict:
     }
 
 
+def _is_safe_document_name(name: str) -> bool:
+    """Reject path traversal: allow only a single filename (no /, \\, or ..)."""
+    if not name or name.strip() != name:
+        return False
+    if ".." in name or "/" in name or "\\" in name:
+        return False
+    return True
+
+
 @router.delete("/{document_name:path}")
 async def delete_document(document_name: str) -> dict:
     """
     Delete a document everywhere:
       1. Remove all its chunks from the vector store (ChromaDB + BM25).
       2. Remove the PDF file from the uploads directory.
-    Path parameter is URL-decoded by FastAPI.
+    Path parameter is URL-decoded by FastAPI. document_name must be a single filename (no path segments).
     Returns: {"deleted": number_of_chunks_removed}
     """
+    if not _is_safe_document_name(document_name):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid document name: must be a single filename without path segments.",
+        )
     create_index()
     result = delete_documents_by_document_name(document_name)
 

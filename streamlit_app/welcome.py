@@ -50,7 +50,7 @@ _apply_page_style()
 
 st.sidebar.markdown("<h2 style='text-align: center;'>RAG Document Assistant</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("<h4 style='text-align: center;'>Your Conversational Platform</h4>", unsafe_allow_html=True)
-st.sidebar.markdown("<div class='footer-text'>© 2024</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div class='footer-text'>© 2026</div>", unsafe_allow_html=True)
 
 st.title("Personal Document Assistant")
 st.markdown(
