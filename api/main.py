@@ -13,7 +13,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import health, documents, chat
+from api.routes import health, documents, chat, cases
 from core.config import settings
 from core.logging_config import setup_logging
 
@@ -56,8 +56,17 @@ app.add_middleware(
 app.include_router(health.router, tags=["health"])
 app.include_router(documents.router, prefix="/documents", tags=["documents"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(cases.router, prefix="/cases", tags=["cases"])
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
+    # Do not watch .venv / site-packages — changes there (e.g. tqdm) trigger reloads and can
+    # interrupt the worker mid-import on Windows (KeyboardInterrupt / odd tracebacks).
+    uvicorn.run(
+        "api.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_excludes=[".venv", "**/.venv/**", "**/site-packages/**", "**/Lib/site-packages/**"],
+    )

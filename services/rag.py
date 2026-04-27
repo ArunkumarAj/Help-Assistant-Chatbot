@@ -28,6 +28,7 @@ from core.config import settings
 from core.logging_config import setup_logging
 from embedding.model import get_embedding_model
 from llm.client import get_llm
+from services.cases_intent import try_cases_intent
 from vector_store.store import vector_search
 
 setup_logging()
@@ -156,8 +157,24 @@ async def chat_response(
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Run RAG (optional) and LLM to produce an answer.
+    If the query is a cases intent (list open cases, create case), handle via SQLite and return; otherwise RAG + LLM.
     Returns (response_text, citation_meta). citation_meta is a list of {index, document_name, page, doc_id} for the UI.
     """
+    # Cases intent: list open cases or create a case (SQLite)
+    cases_result = try_cases_intent(query)
+    if cases_result is not None:
+        response_text, citation_meta = cases_result
+        write_chat_log(
+            query,
+            response_text,
+            SOURCE_RAG,
+            num_chunks=0,
+            from_cache=False,
+            temperature=temperature,
+            extra={"source": "cases_db"},
+        )
+        return (response_text, citation_meta)
+
     # Use only the last 10 turns of history to avoid huge prompts
     history = (chat_history or [])[-10:]
 

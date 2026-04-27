@@ -65,6 +65,16 @@ EVAL_REPORTS_DIR = os.environ.get("EVAL_REPORTS_DIR", str(PROJECT_ROOT / "eval" 
 
 
 # -----------------------------------------------------------------------------
+# SQLite (local cases DB)
+# -----------------------------------------------------------------------------
+
+SQLITE_DB_PATH = os.environ.get(
+    "SQLITE_DB_PATH",
+    str(DATA_DIR / "cases.db"),
+)
+
+
+# -----------------------------------------------------------------------------
 # Redis cache (embeddings, retrieval, LLM responses)
 # -----------------------------------------------------------------------------
 
@@ -98,6 +108,7 @@ class Settings:
     chat_log_preview_len = CHAT_LOG_PREVIEW_LEN
     eval_logging_enabled = EVAL_LOGGING_ENABLED
     eval_reports_dir = Path(EVAL_REPORTS_DIR)
+    sqlite_db_path = SQLITE_DB_PATH
     redis_url = REDIS_URL
     cache_enabled = CACHE_ENABLED
     cache_ttl_embedding = CACHE_TTL_EMBEDDING
