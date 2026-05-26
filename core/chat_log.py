@@ -10,7 +10,8 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from core.config import settings
 
@@ -39,6 +40,31 @@ def _truncate_for_preview(text: str, max_length: int) -> str:
     return text[: max_length - 3].rstrip() + "..."
 
 
+def read_chat_logs(*, reverse: bool = True) -> List[Dict[str, Any]]:
+    """Load all chat log entries from the JSONL file (newest first when reverse=True)."""
+    log_path = getattr(settings, "chat_log_path", None) or "logs/chat_logs.jsonl"
+    path = Path(log_path)
+    if not path.is_file():
+        return []
+    entries: List[Dict[str, Any]] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except OSError as e:
+        logger.warning("Chat log read failed: %s", e)
+        return []
+    if reverse:
+        entries.reverse()
+    return entries
+
+
 def write_chat_log(
     query: str,
     response: str,
@@ -48,6 +74,8 @@ def write_chat_log(
     from_cache: bool = False,
     temperature: float = 0.0,
     extra: Optional[Dict[str, Any]] = None,
+    json_request: Optional[Dict[str, Any]] = None,
+    json_response: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Append one chat turn to the chat log file (JSONL) and log a readable line to the app logger.
@@ -77,6 +105,17 @@ def write_chat_log(
         "num_chunks": num_chunks,
         "from_cache": from_cache,
         "temperature": temperature,
+        "json_request": json_request
+        if json_request is not None
+        else {
+            "query": query,
+            "temperature": temperature,
+        },
+        "json_response": json_response
+        if json_response is not None
+        else {
+            "response": response,
+        },
     }
     if extra:
         entry["extra"] = extra

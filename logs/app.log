@@ -1,0 +1,34 @@
+2026-05-26 23:05:48,037 - INFO - database.schema - Cases DB initialized at C:\Arun\c_bot\jam-chatbot\data\cases.db
+2026-05-26 23:05:48,042 - INFO - core.chat_log - Chat | source=RAG (knowledge base) | chunks=0 | query=list me all open cases | response=**Active open cases (8):**
+
+- **[4]** Order status stuck at Pending — Order #ORD-2026-0042 has been Pending for 48 hours. Payment was confirmed.
+- **[10]** Order status stuck at Pending — Order #OR...
+2026-05-26 23:06:45,011 - INFO - database.schema - Cases DB initialized at C:\Arun\c_bot\jam-chatbot\data\cases.db
+2026-05-26 23:06:45,013 - INFO - core.chat_log - Chat | source=RAG (knowledge base) | chunks=0 | query=list me all open cases | response=**Active open cases (8):**
+
+- **[4]** Order status stuck at Pending — Order #ORD-2026-0042 has been Pending for 48 hours. Payment was confirmed.
+- **[10]** Order status stuck at Pending — Order #OR...
+2026-05-26 23:07:26,622 - INFO - database.schema - Cases DB initialized at C:\Arun\c_bot\jam-chatbot\data\cases.db
+2026-05-26 23:07:26,624 - INFO - core.chat_log - Chat | source=RAG (knowledge base) | chunks=0 | query=list me all open cases | response=**Active open cases (8):**
+
+- **[4]** Order status stuck at Pending — Order #ORD-2026-0042 has been Pending for 48 hours. Payment was confirmed.
+- **[10]** Order status stuck at Pending — Order #OR...
+2026-05-26 23:08:07,404 - INFO - database.schema - Cases DB initialized at C:\Arun\c_bot\jam-chatbot\data\cases.db
+2026-05-26 23:08:07,409 - INFO - core.chat_log - Chat | source=RAG (knowledge base) | chunks=0 | query=list me all open cases | response=**Active open cases (8):**
+
+- **[4]** Order status stuck at Pending — Order #ORD-2026-0042 has been Pending for 48 hours. Payment was confirmed.
+- **[10]** Order status stuck at Pending — Order #OR...
+2026-05-26 23:08:15,631 - INFO - database.schema - Cases DB initialized at C:\Arun\c_bot\jam-chatbot\data\cases.db
+2026-05-26 23:08:15,636 - INFO - core.chat_log - Chat | source=RAG (knowledge base) | chunks=0 | query=list me all open cases | response=**Active open cases (8):**
+
+- **[4]** Order status stuck at Pending — Order #ORD-2026-0042 has been Pending for 48 hours. Payment was confirmed.
+- **[10]** Order status stuck at Pending — Order #OR...
+2026-05-26 23:33:02,150 - INFO - vector_store.store - ChromaDB vector store ready (hybrid: dense + BM25).
+2026-05-26 23:52:09,111 - INFO - vector_store.store - ChromaDB vector store ready (hybrid: dense + BM25).
+2026-05-26 23:55:52,655 - INFO - vector_store.store - ChromaDB vector store ready (hybrid: dense + BM25).
+2026-05-26 23:58:05,589 - INFO - vector_store.store - ChromaDB vector store ready (hybrid: dense + BM25).
+2026-05-26 23:58:17,406 - INFO - vector_store.store - ChromaDB vector store ready (hybrid: dense + BM25).
+2026-05-26 23:58:26,488 - INFO - vector_store.store - ChromaDB vector store ready (hybrid: dense + BM25).
+2026-05-27 00:03:25,897 - INFO - vector_store.store - ChromaDB vector store ready (hybrid: dense + BM25).
+2026-05-27 00:05:15,347 - INFO - vector_store.store - ChromaDB vector store ready (hybrid: dense + BM25).
+2026-05-27 00:06:14,024 - INFO - vector_store.store - ChromaDB vector store ready (hybrid: dense + BM25).

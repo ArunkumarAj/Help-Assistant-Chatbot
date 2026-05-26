@@ -106,6 +106,32 @@ def _chat_log_source(use_rag: bool, num_chunks: int) -> str:
     return SOURCE_RAG if num_chunks > 0 else SOURCE_RAG_NO_HITS
 
 
+def _chat_log_payloads(
+    query: str,
+    *,
+    use_rag: bool,
+    num_results: int,
+    temperature: float,
+    chat_history: Optional[List[Dict[str, str]]],
+    response_text: str,
+    citation_meta: List[Dict[str, Any]],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Build POST /chat-shaped request and response objects for structured logs."""
+    return (
+        {
+            "query": query,
+            "use_rag": use_rag,
+            "num_results": num_results,
+            "temperature": temperature,
+            "chat_history": list(chat_history or []),
+        },
+        {
+            "response": response_text,
+            "citations": citation_meta,
+        },
+    )
+
+
 def _build_citation_meta_list(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Build metadata for each citation (index, document_name, page, doc_id) for the UI (e.g. hover tooltip)."""
     meta_list = []
@@ -161,9 +187,20 @@ async def chat_response(
     Returns (response_text, citation_meta). citation_meta is a list of {index, document_name, page, doc_id} for the UI.
     """
     # Cases intent: list open cases or create a case (SQLite)
+    history = (chat_history or [])[-10:]
+
     cases_result = try_cases_intent(query)
     if cases_result is not None:
         response_text, citation_meta = cases_result
+        json_request, json_response = _chat_log_payloads(
+            query,
+            use_rag=use_rag,
+            num_results=num_results,
+            temperature=temperature,
+            chat_history=history,
+            response_text=response_text,
+            citation_meta=citation_meta,
+        )
         write_chat_log(
             query,
             response_text,
@@ -172,11 +209,10 @@ async def chat_response(
             from_cache=False,
             temperature=temperature,
             extra={"source": "cases_db"},
+            json_request=json_request,
+            json_response=json_response,
         )
         return (response_text, citation_meta)
-
-    # Use only the last 10 turns of history to avoid huge prompts
-    history = (chat_history or [])[-10:]
 
     context = ""
     num_chunks = 0
@@ -220,6 +256,15 @@ async def chat_response(
         cached_response = cache_get_response(prompt_hash)
         if cached_response is not None:
             log_source = _chat_log_source(use_rag, num_chunks)
+            json_request, json_response = _chat_log_payloads(
+                query,
+                use_rag=use_rag,
+                num_results=num_results,
+                temperature=temperature,
+                chat_history=history,
+                response_text=cached_response,
+                citation_meta=citation_meta,
+            )
             write_chat_log(
                 query,
                 cached_response,
@@ -227,6 +272,8 @@ async def chat_response(
                 num_chunks=num_chunks,
                 from_cache=True,
                 temperature=temperature,
+                json_request=json_request,
+                json_response=json_response,
             )
             return (cached_response, citation_meta)
 
@@ -244,6 +291,15 @@ async def chat_response(
             cache_set_response(hash_prompt(prompt), response_text)
 
         log_source = _chat_log_source(use_rag, num_chunks)
+        json_request, json_response = _chat_log_payloads(
+            query,
+            use_rag=use_rag,
+            num_results=num_results,
+            temperature=temperature,
+            chat_history=history,
+            response_text=response_text,
+            citation_meta=citation_meta,
+        )
         write_chat_log(
             query,
             response_text,
@@ -251,11 +307,23 @@ async def chat_response(
             num_chunks=num_chunks,
             from_cache=False,
             temperature=temperature,
+            json_request=json_request,
+            json_response=json_response,
         )
         return (response_text, citation_meta)
     except Exception as e:
         logger.exception("LLM invocation failed")
         error_message = "Sorry, an error occurred. Please try again."
+        json_request, json_response = _chat_log_payloads(
+            query,
+            use_rag=use_rag,
+            num_results=num_results,
+            temperature=temperature,
+            chat_history=history,
+            response_text=error_message,
+            citation_meta=[],
+        )
+        json_response["error"] = str(e)
         write_chat_log(
             query,
             error_message,
@@ -263,6 +331,8 @@ async def chat_response(
             num_chunks=num_chunks,
             from_cache=False,
             temperature=temperature,
-            extra={"error": str(e)},  # logged server-side only; not returned to user
+            extra={"error": str(e)},
+            json_request=json_request,
+            json_response=json_response,
         )
         return (error_message, [])
